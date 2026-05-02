@@ -24,6 +24,7 @@
     "marked": "^18.0.3",
     "next": "16.2.4",
     "next-auth": "5.0.0-beta.30",
+    "ollama-ai-provider": "^1.2.0",
     "ollama-ai-provider-v2": "^3.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

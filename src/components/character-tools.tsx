@@ -21,6 +21,11 @@ interface Character {
   notes: string
 }
 
+interface CharacterFile {
+  name: string
+  path: string
+}
+
 interface CharacterToolsProps {
   projectId: string
 }
@@ -37,121 +42,142 @@ export default function CharacterTools({ projectId }: CharacterToolsProps) {
     loadCharacters()
   }, [projectId])
 
+  // Carica personaggi dalla directory characters/ - compatibile con i tool AI
   const loadCharacters = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(`/api/projects/${projectId}/files?path=characters.md`)
-      if (response.ok) {
-        const data = await response.json()
-        const parsed = parseCharactersMarkdown(data.file.content)
-        setCharacters(parsed)
+      // 1. Lista file nella directory characters/
+      const listResponse = await fetch(`/api/projects/${projectId}/files?dir=characters`)
+      if (!listResponse.ok) {
+        // Directory potrebbe non esistere ancora
+        setCharacters([])
+        return
       }
+
+      const { files } = await listResponse.json()
+      const mdFiles = files.filter((f: any) => f.name.endsWith('.md')) as CharacterFile[]
+
+      // 2. Carica ogni personaggio come file separato
+      const loadedCharacters: Character[] = []
+      for (const file of mdFiles) {
+        try {
+          const char = await loadCharacterFile(file.name.replace('.md', ''))
+          if (char) loadedCharacters.push(char)
+        } catch (error) {
+          console.error(`[CharacterTools] Error loading ${file.name}:`, error)
+        }
+      }
+
+      setCharacters(loadedCharacters)
     } catch (error) {
-      console.error("Error loading characters:", error)
+      console.error("[CharacterTools] Error loading characters:", error)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const parseCharactersMarkdown = (content: string): Character[] => {
-    const characterBlocks = content.split(/\n## /).filter(block => block.trim())
-    const chars: Character[] = []
+  // Carica singolo personaggio da file
+  const loadCharacterFile = async (name: string): Promise<Character | null> => {
+    const response = await fetch(`/api/projects/${projectId}/files?path=characters/${name}.md`)
+    if (!response.ok) return null
 
-    characterBlocks.forEach((block, index) => {
-      const lines = block.split('\n')
-      const character: Character = {
-        id: `char-${index}`,
-        name: "",
-        role: "supporting",
-        description: "",
-        background: "",
-        personality: "",
-        appearance: "",
-        motivations: [],
-        conflicts: [],
-        relationships: [],
-        arc: "",
-        notes: ""
-      }
-
-      lines.forEach(line => {
-        const trimmed = line.trim()
-        if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-          character.name = trimmed.replace(/\*\*/g, '')
-        } else if (trimmed.startsWith('- **Ruolo:**')) {
-          const role = trimmed.split('**Ruolo:**')[1]?.trim()
-          if (role) character.role = role as any
-        } else if (trimmed.startsWith('- **Descrizione:**')) {
-          character.description = trimmed.split('**Descrizione:**')[1]?.trim() || ""
-        } else if (trimmed.startsWith('- **Background:**')) {
-          character.background = trimmed.split('**Background:**')[1]?.trim() || ""
-        } else if (trimmed.startsWith('- **Personalità:**')) {
-          character.personality = trimmed.split('**Personalità:**')[1]?.trim() || ""
-        } else if (trimmed.startsWith('- **Aspetto:**')) {
-          character.appearance = trimmed.split('**Aspetto:**')[1]?.trim() || ""
-        }
-      })
-
-      if (character.name) {
-        chars.push(character)
-      }
-    })
-
-    return chars
+    const data = await response.json()
+    return parseCharacterFromMarkdown(data.file.content, data.file.frontmatter, name)
   }
 
+  // Parsing con supporto frontmatter (compatibile con tool AI)
+  const parseCharacterFromMarkdown = (
+    content: string, 
+    frontmatter: Record<string, any>, 
+    filename: string
+  ): Character => {
+    const name = frontmatter.name || frontmatter.title || filename.replace(/-/g, ' ')
+    
+    return {
+      id: `char-${filename}`,
+      name,
+      role: frontmatter.role || "supporting",
+      description: frontmatter.description || content.split('\n')[0] || "",
+      background: frontmatter.background || "",
+      personality: frontmatter.personality || "",
+      appearance: frontmatter.appearance || "",
+      motivations: frontmatter.motivations || [],
+      conflicts: frontmatter.conflicts || [],
+      relationships: frontmatter.relationships || [],
+      arc: frontmatter.arc || "",
+      notes: frontmatter.notes || content
+    }
+  }
+
+  // Salva tutti i personaggi come file separati (compatibile con tool AI)
   const saveCharacters = async () => {
     setIsSaving(true)
     try {
-      const markdown = generateCharactersMarkdown(characters)
-      const response = await fetch(`/api/projects/${projectId}/files`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: "characters.md",
-          content: markdown
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to save characters")
+      for (const char of characters) {
+        await saveCharacterFile(char)
       }
     } catch (error) {
-      console.error("Error saving characters:", error)
+      console.error("[CharacterTools] Error saving characters:", error)
     } finally {
       setIsSaving(false)
     }
   }
 
-  const generateCharactersMarkdown = (chars: Character[]): string => {
-    let markdown = "---\ntitle: \"Personaggi\"\nupdated: " + new Date().toISOString() + "\n---\n\n# Personaggi del Romanzo\n\n"
+  // Salva singolo personaggio come file con frontmatter (compatibile con tool AI)
+  const saveCharacterFile = async (char: Character): Promise<void> => {
+    const filename = char.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    const path = `characters/${filename}.md`
     
-    chars.forEach(char => {
-      markdown += `## ${char.name}\n\n`
-      markdown += `- **Ruolo:** ${char.role}\n`
-      markdown += `- **Descrizione:** ${char.description}\n`
-      if (char.background) markdown += `- **Background:** ${char.background}\n`
-      if (char.personality) markdown += `- **Personalità:** ${char.personality}\n`
-      if (char.appearance) markdown += `- **Aspetto:** ${char.appearance}\n`
-      if (char.motivations.length > 0) {
-        markdown += `- **Motivazioni:**\n`
-        char.motivations.forEach(mot => markdown += `  - ${mot}\n`)
-      }
-      if (char.conflicts.length > 0) {
-        markdown += `- **Conflitti:**\n`
-        char.conflicts.forEach(conf => markdown += `  - ${conf}\n`)
-      }
-      if (char.arc) markdown += `- **Arco narrativo:** ${char.arc}\n`
-      if (char.notes) markdown += `- **Note:** ${char.notes}\n`
-      markdown += "\n"
+    const frontmatter = {
+      name: char.name,
+      role: char.role,
+      description: char.description,
+      background: char.background,
+      personality: char.personality,
+      appearance: char.appearance,
+      motivations: char.motivations,
+      conflicts: char.conflicts,
+      relationships: char.relationships,
+      arc: char.arc,
+      notes: char.notes,
+      updatedAt: new Date().toISOString()
+    }
+    
+    // Genera contenuto markdown
+    let content = `# ${char.name}\n\n`
+    content += `${char.description}\n\n`
+    if (char.background) content += `## Background\n\n${char.background}\n\n`
+    if (char.personality) content += `## Personalità\n\n${char.personality}\n\n`
+    if (char.appearance) content += `## Aspetto\n\n${char.appearance}\n\n`
+    if (char.motivations.length > 0) {
+      content += `## Motivazioni\n\n`
+      char.motivations.forEach(mot => content += `- ${mot}\n`)
+      content += '\n'
+    }
+    if (char.conflicts.length > 0) {
+      content += `## Conflitti\n\n`
+      char.conflicts.forEach(conf => content += `- ${conf}\n`)
+      content += '\n'
+    }
+    if (char.arc) content += `## Arco Narrativo\n\n${char.arc}\n\n`
+    if (char.notes) content += `## Note\n\n${char.notes}\n\n`
+
+    const response = await fetch(`/api/projects/${projectId}/files`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, content, frontmatter })
     })
 
-    return markdown
+    if (!response.ok) {
+      throw new Error(`Failed to save character: ${char.name}`)
+    }
   }
 
-  const createCharacter = () => {
+  // Crea nuovo personaggio e salva immediatamente
+  const createCharacter = async () => {
+    const filename = `nuovo-personaggio-${Date.now()}`
     const newChar: Character = {
-      id: `char-${Date.now()}`,
+      id: `char-${filename}`,
       name: "Nuovo Personaggio",
       role: "supporting",
       description: "",
@@ -164,13 +190,35 @@ export default function CharacterTools({ projectId }: CharacterToolsProps) {
       arc: "",
       notes: ""
     }
+    
     setCharacters([...characters, newChar])
     setSelectedCharacter(newChar)
     setIsCreating(true)
     setActiveTab("details")
+    
+    // Salva immediatamente il file
+    try {
+      await saveCharacterFile(newChar)
+    } catch (error) {
+      console.error("[CharacterTools] Error creating character file:", error)
+    }
   }
 
-  const deleteCharacter = (charId: string) => {
+  // Elimina personaggio: rimuovi da stato e cancella file
+  const deleteCharacter = async (charId: string) => {
+    const char = characters.find(c => c.id === charId)
+    if (char) {
+      // Prova a cancellare il file
+      try {
+        const filename = char.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+        await fetch(`/api/projects/${projectId}/files?path=characters/${filename}.md`, {
+          method: "DELETE"
+        })
+      } catch (error) {
+        console.error("[CharacterTools] Error deleting character file:", error)
+      }
+    }
+    
     setCharacters(characters.filter(char => char.id !== charId))
     if (selectedCharacter?.id === charId) {
       setSelectedCharacter(null)

@@ -58,9 +58,13 @@ export async function GET(
       const files = await listFiles(userId, projectId, dir)
       return NextResponse.json({ files })
     }
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof PathTraversalError) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
+    }
+    // File non trovato -> 404
+    if (error.message?.includes("File not found") || error.message?.includes("ENOENT")) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 })
     }
     console.error("[API] Error reading files:", error)
     return NextResponse.json({ error: "Failed to read files" }, { status: 500 })
