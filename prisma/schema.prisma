@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite requires foreign keys to be enabled
+// This is handled in the connection string or manually after connection
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  password     String // bcrypt hash
+  projects     Project[]
+  chatMessages ChatMessage[]
+  memories     UserMemory[]
+  createdAt    DateTime      @default(now())
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  path        String // relativo a data/projects/<userId>/
+  createdAt   DateTime      @default(now())
+
+  chatMessages ChatMessage[]
+  fileLocks    FileLock[]
+
+  @@unique([userId, name])
+}
+
+model ChatMessage {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  role        String // "user" | "assistant" | "system" | "tool"
+  content     String? // null per tool calls
+  toolCalls   String? // JSON string: { name, arguments }[]
+  toolResults String? // JSON string: { success, message, data }[]
+  createdAt   DateTime @default(now())
+}
+
+model FileLock {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  filePath  String // relativo al progetto
+  lockedBy  String // "ai" | "user"
+  lockedAt  DateTime @default(now())
+  expiresAt DateTime // auto-release dopo 5 min
+
+  @@unique([projectId, filePath])
+}
+
+model UserMemory {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fact        String // "L'utente preferisce scrivere in prima persona"
+  category    String // "preference" | "project" | "fact"
+  confidence  Float     @default(1.0) // 0.0 - 1.0
+  sourceMsgId String? // riferimento a ChatMessage che ha generato questo fatto
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime? // null = never expires
+}
