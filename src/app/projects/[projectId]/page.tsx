@@ -5,6 +5,9 @@ import SearchClient from "@/components/search-client"
 import IndexProjectButton from "@/components/index-project-button"
 import AIChatInterface from "@/components/ai-chat-interface"
 import AIContentGenerator from "@/components/ai-content-generator"
+import ProjectWorkspace from "@/components/project-workspace"
+import OutlineManager from "@/components/outline-manager"
+import CharacterTools from "@/components/character-tools"
 
 interface SearchResult {
   filePath: string
@@ -96,23 +99,38 @@ export default async function ProjectPage({
           </div>
         </div>
 
-        {/* Ricerca e AI Tools */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Sidebar ricerca */}
-          <div>
-            <div className="space-y-6">
-              <SearchClient projectId={projectId} />
-              <AIContentGenerator projectId={projectId} />
-            </div>
-          </div>
+        {/* Workspace, Ricerca e AI Tools */}
+        <div className="space-y-8">
+          {/* File Editor Workspace */}
+          <ProjectWorkspace projectId={projectId} />
           
-          {/* AI Chat e Risultati ricerca */}
-          <div className="space-y-6">
-            <AIChatInterface projectId={projectId} />
-            <div id="search-results">
-              <div className="bg-white p-6 rounded-lg shadow border">
-                <h3 className="text-lg font-semibold mb-4">Ricerca</h3>
-                <p className="text-gray-500">Usa la ricerca semantica per trovare contenuti nei tuoi documenti.</p>
+          {/* Outline, Characters, Ricerca e AI Tools */}
+          <div className="space-y-8">
+            {/* Outline Manager */}
+            <OutlineManager projectId={projectId} />
+            
+            {/* Character Tools */}
+            <CharacterTools projectId={projectId} />
+            
+            {/* Ricerca e AI Tools */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Sidebar ricerca */}
+              <div>
+                <div className="space-y-6">
+                  <SearchClient projectId={projectId} />
+                  <AIContentGenerator projectId={projectId} />
+                </div>
+              </div>
+              
+              {/* AI Chat e Risultati ricerca */}
+              <div className="space-y-6">
+                <AIChatInterface projectId={projectId} />
+                <div id="search-results">
+                  <div className="bg-white p-6 rounded-lg shadow border">
+                    <h3 className="text-lg font-semibold mb-4">Ricerca</h3>
+                    <p className="text-gray-500">Usa la ricerca semantica per trovare contenuti nei tuoi documenti.</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
