@@ -3,6 +3,8 @@ import { redirect } from "next/navigation"
 import { prisma } from "../../../../prisma/config"
 import SearchClient from "@/components/search-client"
 import IndexProjectButton from "@/components/index-project-button"
+import AIChatInterface from "@/components/ai-chat-interface"
+import AIContentGenerator from "@/components/ai-content-generator"
 
 interface SearchResult {
   filePath: string
@@ -94,21 +96,23 @@ export default async function ProjectPage({
           </div>
         </div>
 
-        {/* Ricerca e risultati */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Ricerca e AI Tools */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Sidebar ricerca */}
           <div>
-            <SearchClient projectId={projectId} />
+            <div className="space-y-6">
+              <SearchClient projectId={projectId} />
+              <AIContentGenerator projectId={projectId} />
+            </div>
           </div>
-
-          {/* Area risultati */}
-          <div className="lg:col-span-2">
+          
+          {/* AI Chat e Risultati ricerca */}
+          <div className="space-y-6">
+            <AIChatInterface projectId={projectId} />
             <div id="search-results">
               <div className="bg-white p-6 rounded-lg shadow border">
                 <h3 className="text-lg font-semibold mb-4">Ricerca</h3>
-                <p className="text-gray-500">
-                  Usa la ricerca semantica per trovare contenuti nei tuoi documenti.
-                </p>
+                <p className="text-gray-500">Usa la ricerca semantica per trovare contenuti nei tuoi documenti.</p>
               </div>
             </div>
           </div>
@@ -117,4 +121,3 @@ export default async function ProjectPage({
     </main>
   )
 }
-
