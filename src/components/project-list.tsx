@@ -6,7 +6,7 @@ interface Project {
   id: string
   name: string
   description: string | null
-  createdAt: string
+  createdAt: string | Date
 }
 
 export default function ProjectList({ projects }: { projects: Project[] }) {

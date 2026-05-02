@@ -34,8 +34,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json()
-    const { name, description } = body
+    // Gestisce sia JSON che form-encoded
+    let name: string
+    let description: string | undefined
+    
+    const contentType = request.headers.get("content-type")
+    
+    if (contentType?.includes("application/json")) {
+      const body = await request.json()
+      name = body.name
+      description = body.description
+    } else {
+      // Form-encoded data
+      const formData = await request.formData()
+      name = formData.get("name") as string
+      description = formData.get("description") as string | undefined
+    }
 
     if (!name || typeof name !== "string" || name.length < 3) {
       return NextResponse.json(
@@ -69,6 +83,7 @@ export async function POST(request: Request) {
     }
 
     // Crea nel database
+    console.log(`[API] Creating project in database: ${projectId}`)
     const project = await prisma.project.create({
       data: {
         userId: session.user.id,
@@ -77,9 +92,18 @@ export async function POST(request: Request) {
         path: projectId,
       },
     })
+    console.log(`[API] Project created in database: ${project.id}`)
 
     // Crea struttura filesystem
+    console.log(`[API] Creating filesystem structure for user: ${session.user.id}, project: ${projectId}`)
     await createProjectStructure(session.user.id, projectId)
+    console.log(`[API] Filesystem structure created successfully`)
+
+    // Se è una richiesta form-encoded, fai redirect
+    const requestContentType = request.headers.get("content-type")
+    if (!requestContentType?.includes("application/json")) {
+      return NextResponse.redirect(new URL("/dashboard", request.url))
+    }
 
     return NextResponse.json({ project }, { status: 201 })
   } catch (error) {

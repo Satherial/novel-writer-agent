@@ -79,24 +79,39 @@ export async function createProjectStructure(
   userId: string, 
   projectId: string
 ): Promise<void> {
-  const projectPath = getProjectPath(userId, projectId)
-  
-  // Crea le directory base
-  await ensureDir(path.join(projectPath, "chapters"))
-  await ensureDir(path.join(projectPath, "characters"))
-  await ensureDir(path.join(projectPath, "notes"))
-  
-  // Crea outline.md vuoto
-  const outlinePath = path.join(projectPath, "outline.md")
   try {
-    await fs.access(outlinePath)
-  } catch {
-    // File non esiste, crealo
-    await fs.writeFile(
-      outlinePath, 
-      `---\ntitle: "Outline del Romanzo"\ncreated: ${new Date().toISOString()}\n---\n\n# Outline\n\nAggiungi qui la struttura del tuo romanzo.\n`,
-      "utf-8"
-    )
+    const projectPath = getProjectPath(userId, projectId)
+    console.log(`[FS] Creating project structure at: ${projectPath}`)
+    
+    // Crea directory principale del progetto
+    await ensureDir(projectPath)
+    console.log(`[FS] Created main directory: ${projectPath}`)
+    
+    // Crea le directory base
+    await ensureDir(path.join(projectPath, "chapters"))
+    await ensureDir(path.join(projectPath, "characters"))
+    await ensureDir(path.join(projectPath, "notes"))
+    console.log(`[FS] Created subdirectories for project: ${projectId}`)
+    
+    // Crea outline.md vuoto
+    const outlinePath = path.join(projectPath, "outline.md")
+    try {
+      await fs.access(outlinePath)
+      console.log(`[FS] outline.md already exists: ${outlinePath}`)
+    } catch {
+      // File non esiste, crealo
+      await fs.writeFile(
+        outlinePath, 
+        `---\ntitle: "Outline del Romanzo"\ncreated: ${new Date().toISOString()}\n---\n\n# Outline\n\nAggiungi qui la struttura del tuo romanzo.\n`,
+        "utf-8"
+      )
+      console.log(`[FS] Created outline.md: ${outlinePath}`)
+    }
+    
+    console.log(`[FS] Project structure created successfully: ${projectId}`)
+  } catch (error) {
+    console.error(`[FS] Error creating project structure:`, error)
+    throw error
   }
 }
 
@@ -273,4 +288,16 @@ export async function getAllMarkdownFiles(
   
   await walk(safePath, subdir === "." ? "" : subdir)
   return results
+}
+
+// Verifica accesso progetto (usato dalle API)
+export async function verifyProjectAccess(userId: string, projectId: string): Promise<boolean> {
+  const { prisma } = await import("../../prisma/config")
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      userId,
+    },
+  })
+  return project !== null
 }
