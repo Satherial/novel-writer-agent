@@ -7,6 +7,8 @@ import CodeMirror from "@uiw/react-codemirror"
 import type { ReactCodeMirrorRef } from "@uiw/react-codemirror"
 import { markdown } from "@codemirror/lang-markdown"
 import { useChatPanel } from "@/contexts/chat-panel-context"
+import { useDebouncedCallback } from "@/hooks/useDebounce"
+import { useFileLock } from "@/hooks/useFileLock"
 
 // Toolbar button component
 interface ToolbarButtonProps {
@@ -67,34 +69,20 @@ export default function ProjectClient({
   const [characters, setCharacters] = useState<Character[]>([])
   const [loadingFiles, setLoadingFiles] = useState(true)
   const [fileContent, setFileContent] = useState("")
-  const [isSaving, setIsSaving] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+
+  const { locked: isSaving, withLock } = useFileLock()
 
   const contentRef = useRef(fileContent)
   const originalContentRef = useRef("")
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cmRef = useRef<ReactCodeMirrorRef>(null)
 
-  const scheduleDebouncedSave = useCallback(
-    (newContent: string) => {
-      contentRef.current = newContent
+  const persistContent = useCallback(
+    async (newContent: string) => {
+      if (!selectedFile || newContent === originalContentRef.current) return
 
-      const hasChanges = newContent !== originalContentRef.current
-      if (hasChanges) {
-        setSaveStatus("saving")
-      } else {
-        setSaveStatus("idle")
-      }
-
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current)
-      }
-
-      saveTimerRef.current = setTimeout(async () => {
-        if (!selectedFile || newContent === originalContentRef.current) return
-
+      await withLock(async () => {
         try {
-          setIsSaving(true)
           const res = await fetch(`/api/projects/${projectId}/files`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -118,12 +106,28 @@ export default function ProjectClient({
         } catch {
           console.error("Error saving file")
           setSaveStatus("error")
-        } finally {
-          setIsSaving(false)
         }
-      }, 600)
+      })
     },
-    [projectId, selectedFile]
+    [projectId, selectedFile, withLock]
+  )
+
+  const debouncedPersist = useDebouncedCallback(persistContent, 600)
+
+  const scheduleDebouncedSave = useCallback(
+    (newContent: string) => {
+      contentRef.current = newContent
+
+      const hasChanges = newContent !== originalContentRef.current
+      if (hasChanges) {
+        setSaveStatus("saving")
+      } else {
+        setSaveStatus("idle")
+      }
+
+      debouncedPersist(newContent)
+    },
+    [debouncedPersist]
   )
 
   const insertMarkdown = useCallback(

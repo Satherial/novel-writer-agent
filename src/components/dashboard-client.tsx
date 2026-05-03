@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Chat from "@/components/chat"
+import CreateProjectModal from "@/components/create-project-modal"
 import { useChatPanel } from "@/contexts/chat-panel-context"
 
 interface Project {
@@ -203,85 +204,17 @@ export default function DashboardClient({ projects, userId: _userId }: Dashboard
         </div>
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50">
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-md w-full border border-gray-200"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="modal-create-project-title"
-          >
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 id="modal-create-project-title" className="text-lg font-semibold text-gray-900">
-                Crea nuovo progetto
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                aria-label="Chiudi"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateProject} className="p-6 space-y-4">
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">{error}</div>
-              )}
-
-              <div>
-                <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Nome del progetto *
-                </label>
-                <input
-                  id="project-name"
-                  type="text"
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="Il mio romanzo"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                  minLength={3}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="project-desc" className="block text-sm font-medium text-gray-700 mb-1">
-                  Descrizione (opzionale)
-                </label>
-                <textarea
-                  id="project-desc"
-                  value={newProjectDesc}
-                  onChange={(e) => setNewProjectDesc(e.target.value)}
-                  placeholder="Una breve descrizione del progetto..."
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
-                >
-                  Annulla
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading || newProjectName.length < 3}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                >
-                  {loading ? "Creazione..." : "Crea progetto"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CreateProjectModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        loading={loading}
+        error={error}
+        projectName={newProjectName}
+        projectDescription={newProjectDesc}
+        onProjectNameChange={setNewProjectName}
+        onProjectDescriptionChange={setNewProjectDesc}
+        onSubmit={handleCreateProject}
+      />
     </div>
   )
 }
