@@ -8,16 +8,131 @@ interface ChatMessage {
   content: string
 }
 
-interface ChatProps {
-  projectId?: string
+interface QuickActionButtonProps {
+  icon: string
+  label: string
+  prompt: string
+  onClick: (prompt: string) => void
+  disabled?: boolean
 }
 
-export default function Chat({ projectId }: ChatProps) {
+function QuickActionButton({ icon, label, prompt, onClick, disabled }: QuickActionButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(prompt)}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+    >
+      <span>{icon}</span>
+      <span>{label}</span>
+    </button>
+  )
+}
+
+interface WorkflowButtonProps {
+  icon: string
+  label: string
+  workflowId: string
+  onClick: (workflowId: string) => void
+  loading: string | null
+  disabled?: boolean
+  tooltip?: string
+}
+
+function WorkflowButton({ icon, label, workflowId, onClick, loading, disabled, tooltip }: WorkflowButtonProps) {
+  const isLoading = loading === workflowId
+
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(workflowId)}
+      disabled={disabled || isLoading}
+      title={tooltip}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+        isLoading
+          ? "bg-blue-100 text-blue-700 border border-blue-200 cursor-wait"
+          : disabled
+            ? "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+            : "bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 hover:border-blue-300"
+      }`}
+    >
+      {isLoading ? (
+        <>
+          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span>Avvio...</span>
+        </>
+      ) : (
+        <>
+          <span>{icon}</span>
+          <span>{label}</span>
+        </>
+      )}
+    </button>
+  )
+}
+
+interface ChatProps {
+  projectId?: string
+  selectedFile?: string | null
+}
+
+export default function Chat({ projectId, selectedFile }: ChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [workflowLoading, setWorkflowLoading] = useState<string | null>(null)
+
+  // Trigger workflow via API
+  const triggerWorkflow = async (workflowId: string) => {
+    if (!projectId) {
+      setError("Seleziona un progetto per usare i workflow")
+      return
+    }
+
+    setWorkflowLoading(workflowId)
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          filePath: selectedFile,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "Workflow failed")
+      }
+
+      // Add workflow response as system message
+      const workflowMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: `🚀 **${data.workflow}** attivato!\n\n${data.data?.message || ""}\n\n${data.prompt ? `💡 **Prompt suggerito:**\n\`${data.prompt}\`` : ""}`,
+      }
+
+      setMessages((prev) => [...prev, workflowMessage])
+
+      // If there's a prompt, also set it in input
+      if (data.prompt) {
+        setInput(data.prompt)
+      }
+    } catch (err: any) {
+      setError(err.message || "Errore workflow")
+    } finally {
+      setWorkflowLoading(null)
+    }
+  }
 
   // Auto-scroll to bottom quando arrivano nuovi messaggi
   useEffect(() => {
@@ -166,6 +281,96 @@ export default function Chat({ projectId }: ChatProps) {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Quick Actions */}
+      <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
+        <p className="text-xs text-gray-500 mb-2">Azioni rapide:</p>
+        <div className="flex flex-wrap gap-2">
+          <QuickActionButton
+            icon="💬"
+            label="Genera dialogo"
+            prompt="Genera un dialogo tra i personaggi del progetto"
+            onClick={setInput}
+            disabled={isLoading}
+          />
+          <QuickActionButton
+            icon="🎬"
+            label="Descrivi scena"
+            prompt="Descrivi una scena ambientata nel progetto"
+            onClick={setInput}
+            disabled={isLoading}
+          />
+          <QuickActionButton
+            icon="👤"
+            label="Crea personaggio"
+            prompt="Crea un nuovo personaggio per il romanzo"
+            onClick={setInput}
+            disabled={isLoading}
+          />
+          <QuickActionButton
+            icon="📖"
+            label="Genera capitolo"
+            prompt="Genera un nuovo capitolo basato sull'outline"
+            onClick={setInput}
+            disabled={isLoading}
+          />
+          <QuickActionButton
+            icon="✍️"
+            label="Revisiona testo"
+            prompt="Revisiona e migliora il testo selezionato"
+            onClick={setInput}
+            disabled={isLoading}
+          />
+        </div>
+      </div>
+
+      {/* Workflow Triggers */}
+      {projectId && (
+        <div className="px-4 py-2 border-t border-gray-200 bg-blue-50">
+          <p className="text-xs text-blue-600 mb-2 font-medium">🚀 Workflow AI:</p>
+          <div className="flex flex-wrap gap-2">
+            <WorkflowButton
+              icon="🤖"
+              label="Genera Capitolo AI"
+              workflowId="chapter-generation"
+              onClick={triggerWorkflow}
+              loading={workflowLoading}
+              disabled={!selectedFile}
+              tooltip={!selectedFile ? "Seleziona un file capitolo" : undefined}
+            />
+            <WorkflowButton
+              icon="🎭"
+              label="Genera Personaggi"
+              workflowId="character-generation"
+              onClick={triggerWorkflow}
+              loading={workflowLoading}
+            />
+            <WorkflowButton
+              icon="💭"
+              label="Genera Dialogo"
+              workflowId="dialog-generation"
+              onClick={triggerWorkflow}
+              loading={workflowLoading}
+            />
+            <WorkflowButton
+              icon="🌄"
+              label="Descrivi Scena"
+              workflowId="scene-description"
+              onClick={triggerWorkflow}
+              loading={workflowLoading}
+            />
+            <WorkflowButton
+              icon="🔍"
+              label="Revisiona Testo"
+              workflowId="text-review"
+              onClick={triggerWorkflow}
+              loading={workflowLoading}
+              disabled={!selectedFile}
+              tooltip={!selectedFile ? "Seleziona un file" : undefined}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Input area */}
       <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200">
