@@ -12,6 +12,7 @@
     "db:generate": "prisma generate"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.176",
     "@auth/prisma-adapter": "2.7.0",
     "@codemirror/lang-markdown": "^6.3.2",
     "@prisma/client": "5.22.0",

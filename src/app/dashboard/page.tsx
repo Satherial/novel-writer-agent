@@ -2,6 +2,7 @@ import { auth, signOut } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "../../../prisma/config";
 import CreateProjectFormSimple from "@/components/create-project-form-simple";
+import Chat from "@/components/chat";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -87,9 +88,10 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          {/* Sidebar con form creazione */}
-          <div>
+          {/* Sidebar con form creazione e chat */}
+          <div className="space-y-6">
             <CreateProjectFormSimple />
+            <Chat />
           </div>
         </div>
       </div>
