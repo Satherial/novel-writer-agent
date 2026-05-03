@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, FormEvent } from "react"
+import { useSession } from "next-auth/react"
 
 interface ChatMessage {
   id: string
@@ -87,6 +88,36 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [workflowLoading, setWorkflowLoading] = useState<string | null>(null)
+  const { data: session } = useSession()
+
+  // Track if history has been loaded to prevent overwriting new messages
+  const hasLoadedHistory = useRef(false)
+
+  // Load chat history from database on mount only
+  useEffect(() => {
+    if (session?.user?.id && !hasLoadedHistory.current) {
+      loadChatHistory()
+      hasLoadedHistory.current = true
+    }
+  }, [session?.user?.id, projectId])
+
+  const loadChatHistory = async () => {
+    try {
+      const url = new URL("/api/chat/history", window.location.origin)
+      if (projectId) {
+        url.searchParams.append("projectId", projectId)
+      }
+
+      const response = await fetch(url.toString())
+      if (response.ok) {
+        const data = await response.json()
+        // Only set messages if we don't have any yet (prevent overwriting streaming response)
+        setMessages(prev => prev.length === 0 ? (data.messages || []) : prev)
+      }
+    } catch (error) {
+      console.error("[Chat] Error loading history:", error)
+    }
+  }
 
   // Trigger workflow via API
   const triggerWorkflow = async (workflowId: string) => {
@@ -169,37 +200,42 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
         throw new Error(errorData.error || `HTTP ${response.status}`)
       }
 
-      // Leggi lo stream di testo
+      // Read the stream
       const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error("No reader available")
+      }
+
       const decoder = new TextDecoder()
       let assistantContent = ""
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          assistantContent += decoder.decode(value, { stream: true })
-          
-          // Aggiorna il messaggio dell'assistente in tempo reale
-          setMessages((prev) => {
-            const lastMsg = prev[prev.length - 1]
-            if (lastMsg?.role === "assistant") {
-              return [
-                ...prev.slice(0, -1),
-                { ...lastMsg, content: assistantContent },
-              ]
-            }
-            return [
-              ...prev,
-              {
-                id: (Date.now() + 1).toString(),
-                role: "assistant" as const,
-                content: assistantContent,
-              },
-            ]
-          })
+      let chunkCount = 0
+      console.log("[Chat] Starting to read stream...")
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          console.log("[Chat] Stream complete, total chunks:", chunkCount, "content length:", assistantContent.length)
+          break
         }
+        
+        chunkCount++
+        const text = decoder.decode(value, { stream: true })
+        console.log("[Chat] Chunk", chunkCount, ":", text.substring(0, 50))
+        assistantContent += text
+        
+        // Update UI with new content
+        setMessages(prev => {
+          const newMessages = [...prev]
+          const lastMsg = newMessages[newMessages.length - 1]
+          if (lastMsg?.role === "assistant") {
+            lastMsg.content = assistantContent
+          }
+          return newMessages
+        })
       }
+      
+      console.log("[Chat] Final content length:", assistantContent.length)
+      
     } catch (err: any) {
       setError(err.message || "Errore durante la richiesta")
       console.error("[Chat] Error:", err)

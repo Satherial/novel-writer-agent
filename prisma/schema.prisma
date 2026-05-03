@@ -39,13 +39,15 @@ model ChatMessage {
   id          String   @id @default(uuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String?  // null for dashboard chat
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   role        String // "user" | "assistant" | "system" | "tool"
   content     String? // null per tool calls
   toolCalls   String? // JSON string: { name, arguments }[]
   toolResults String? // JSON string: { success, message, data }[]
   createdAt   DateTime @default(now())
+
+  @@index([userId, projectId, createdAt])
 }
 
 model FileLock {
