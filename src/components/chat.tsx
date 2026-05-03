@@ -22,7 +22,7 @@ function QuickActionButton({ icon, label, prompt, onClick, disabled }: QuickActi
       type="button"
       onClick={() => onClick(prompt)}
       disabled={disabled}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
     >
       <span>{icon}</span>
       <span>{label}</span>
@@ -49,7 +49,7 @@ function WorkflowButton({ icon, label, workflowId, onClick, loading, disabled, t
       onClick={() => onClick(workflowId)}
       disabled={disabled || isLoading}
       title={tooltip}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
         isLoading
           ? "bg-blue-100 text-blue-700 border border-blue-200 cursor-wait"
           : disabled
@@ -209,17 +209,15 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg border border-gray-200 shadow-sm">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-lg">
-        <h2 className="text-sm font-semibold text-gray-700">
-          🤖 Assistente Scrittura Creativa
-          {projectId && <span className="ml-2 text-xs text-gray-500">(Progetto attivo)</span>}
+    <div className="flex flex-col h-full min-h-0 bg-white rounded-lg border border-gray-200 shadow-sm">
+      <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+        <h2 className="text-sm font-semibold text-gray-800">
+          🤖 Assistente scrittura creativa
+          {projectId && <span className="ml-2 text-xs font-normal text-gray-500">(progetto attivo)</span>}
         </h2>
       </div>
 
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[300px] max-h-[500px]">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center text-gray-400 py-8">
             <p className="text-sm">Inizia una conversazione con l'assistente AI</p>
@@ -373,13 +371,13 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
       )}
 
       {/* Input area */}
-      <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200">
+      <form onSubmit={handleSubmit} className="shrink-0 p-4 border-t border-gray-200 bg-white">
         <div className="flex gap-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Chiedi qualcosa all'assistente..."
-            className="flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             rows={2}
             disabled={isLoading}
             onKeyDown={(e) => {
@@ -392,7 +390,7 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
           <button
             type="submit"
             disabled={isLoading || !input.trim()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isLoading ? "..." : "Invia"}
           </button>

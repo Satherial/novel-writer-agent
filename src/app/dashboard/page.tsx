@@ -17,9 +17,9 @@ export default async function DashboardPage() {
   });
 
   return (
-    <div className="flex h-[calc(100vh-64px)]">
+    <div className="flex h-full">
       {/* Main content - Progetti */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 p-6">
         <div className="max-w-5xl mx-auto">
           <DashboardClient projects={projects} userId={session.user.id} />
         </div>

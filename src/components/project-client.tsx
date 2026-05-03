@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import Chat from "@/components/chat"
 import SearchClient from "@/components/search-client"
 import CodeMirror from "@uiw/react-codemirror"
+import type { ReactCodeMirrorRef } from "@uiw/react-codemirror"
 import { markdown } from "@codemirror/lang-markdown"
-import { oneDark } from "@codemirror/theme-one-dark"
+import { useChatPanel } from "@/contexts/chat-panel-context"
 
 // Toolbar button component
 interface ToolbarButtonProps {
@@ -21,7 +22,7 @@ function ToolbarButton({ icon, label, onClick, title }: ToolbarButtonProps) {
       type="button"
       onClick={onClick}
       title={title}
-      className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+      className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded-md text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
     >
       <span className="font-medium">{icon}</span>
       <span>{label}</span>
@@ -58,11 +59,9 @@ export default function ProjectClient({
   projectDescription,
   indexStatus,
 }: ProjectClientProps) {
+  const { chatOpen, setChatOpen } = useChatPanel()
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [chatOpen, setChatOpen] = useState(true)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const [files, setFiles] = useState<ProjectFile[]>([])
   const [characters, setCharacters] = useState<Character[]>([])
@@ -70,53 +69,80 @@ export default function ProjectClient({
   const [fileContent, setFileContent] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
-  const [cursorPosition, setCursorPosition] = useState({ start: 0, end: 0 })
 
-  // Refs for auto-save to prevent focus loss
   const contentRef = useRef(fileContent)
   const originalContentRef = useRef("")
-  const saveTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cmRef = useRef<ReactCodeMirrorRef>(null)
 
-  // Helper function to insert markdown syntax
-  const insertMarkdown = (before: string, after: string) => {
-    const textarea = textareaRef.current
-    if (!textarea) return
+  const scheduleDebouncedSave = useCallback(
+    (newContent: string) => {
+      contentRef.current = newContent
 
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const selectedText = fileContent.substring(start, end)
-    const newContent = fileContent.substring(0, start) + before + selectedText + after + fileContent.substring(end)
-    
-    setFileContent(newContent)
-    contentRef.current = newContent
-    
-    // Trigger auto-save
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    setSaveStatus("saving")
-    saveTimerRef.current = setTimeout(async () => {
-      if (!selectedFile || newContent === originalContentRef.current) return
-      try {
-        setIsSaving(true)
-        const res = await fetch(`/api/projects/${projectId}/files`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: selectedFile, content: newContent }),
-        })
-        if (res.ok) {
-          originalContentRef.current = newContent
-          setSaveStatus("saved")
-          setTimeout(() => setSaveStatus("idle"), 2000)
-        } else {
-          setSaveStatus("error")
-        }
-      } catch (error) {
-        setSaveStatus("error")
-      } finally {
-        setIsSaving(false)
+      const hasChanges = newContent !== originalContentRef.current
+      if (hasChanges) {
+        setSaveStatus("saving")
+      } else {
+        setSaveStatus("idle")
       }
-    }, 600)
-  }
+
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+      }
+
+      saveTimerRef.current = setTimeout(async () => {
+        if (!selectedFile || newContent === originalContentRef.current) return
+
+        try {
+          setIsSaving(true)
+          const res = await fetch(`/api/projects/${projectId}/files`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              path: selectedFile,
+              content: newContent,
+            }),
+          })
+
+          if (res.ok) {
+            originalContentRef.current = newContent
+            setSaveStatus("saved")
+            setTimeout(() => {
+              if (contentRef.current === newContent) {
+                setSaveStatus("idle")
+              }
+            }, 2000)
+          } else {
+            setSaveStatus("error")
+          }
+        } catch {
+          console.error("Error saving file")
+          setSaveStatus("error")
+        } finally {
+          setIsSaving(false)
+        }
+      }, 600)
+    },
+    [projectId, selectedFile]
+  )
+
+  const insertMarkdown = useCallback(
+    (before: string, after: string) => {
+      const view = cmRef.current?.view
+      if (!view) return
+
+      const { from, to } = view.state.selection.main
+      const selectedText = view.state.sliceDoc(from, to)
+      const insert = before + selectedText + after
+
+      view.focus()
+      view.dispatch({
+        changes: { from, to, insert },
+        selection: { anchor: from + insert.length },
+      })
+    },
+    []
+  )
 
   // Simple markdown renderer
   const renderMarkdown = (content: string): string => {
@@ -239,61 +265,6 @@ export default function ProjectClient({
     loadFile()
   }, [selectedFile, projectId])
 
-  // Auto-save handler - called on textarea change (no focus loss!)
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newContent = e.target.value
-    setFileContent(newContent)
-    contentRef.current = newContent
-
-    // Only show as modified if actually different from original
-    const hasChanges = newContent !== originalContentRef.current
-    if (hasChanges) {
-      setSaveStatus("saving")
-    } else {
-      setSaveStatus("idle")
-    }
-
-    // Clear existing timer
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current)
-    }
-
-    // Debounce save
-    saveTimerRef.current = setTimeout(async () => {
-      if (!selectedFile || newContent === originalContentRef.current) return
-
-      try {
-        setIsSaving(true)
-        // Keep focus - don't trigger any state that would re-render the textarea
-        const res = await fetch(`/api/projects/${projectId}/files`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            path: selectedFile,
-            content: newContent,
-          }),
-        })
-
-        if (res.ok) {
-          originalContentRef.current = newContent
-          setSaveStatus("saved")
-          setTimeout(() => {
-            if (contentRef.current === newContent) {
-              setSaveStatus("idle")
-            }
-          }, 2000)
-        } else {
-          setSaveStatus("error")
-        }
-      } catch (error) {
-        console.error("Error saving:", error)
-        setSaveStatus("error")
-      } finally {
-        setIsSaving(false)
-      }
-    }, 600)
-  }
-
   const handleFileSelect = (path: string) => {
     setSelectedFile(path)
     // On mobile, close sidebar after selection
@@ -335,7 +306,7 @@ export default function ProjectClient({
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+    <div className="relative flex h-[calc(100vh-64px)] overflow-hidden">
       {/* Left Sidebar - Slide panel */}
       <aside
         className={`bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
@@ -436,21 +407,12 @@ export default function ProjectClient({
               {indexStatus.indexed ? `${indexStatus.indexedFiles} file` : "Non indicizzato"}
             </span>
 
-            <button
-              onClick={() => setChatOpen(!chatOpen)}
-              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
-              title={chatOpen ? "Chiudi chat" : "Apri chat"}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-            </button>
           </div>
         </div>
 
-        {/* Search bar - full width */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3">
-          <div className="max-w-2xl">
+        {/* Search — stays under top bar */}
+        <div className="shrink-0 bg-white border-b border-gray-200 px-4 py-3 shadow-sm">
+          <div className="w-full max-w-2xl">
             <SearchClient projectId={projectId} />
           </div>
         </div>
@@ -590,7 +552,7 @@ export default function ProjectClient({
 
               {/* Editor */}
               <div className={`flex-1 overflow-hidden ${showPreview ? "flex" : ""}`}>
-                <div className={`${showPreview ? "w-1/2" : "w-full"} h-full p-4`}>
+                <div className={`relative ${showPreview ? "w-1/2" : "w-full"} h-full p-4`}>
                   {isSaving && (
                     <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg pointer-events-none">
                       <div className="bg-white shadow-lg rounded-lg px-4 py-3 flex items-center gap-3 border border-gray-200">
@@ -603,37 +565,13 @@ export default function ProjectClient({
                     </div>
                   )}
                   <CodeMirror
+                    ref={cmRef}
                     value={fileContent}
                     height="100%"
                     extensions={[markdown()]}
                     onChange={(value) => {
                       setFileContent(value)
-                      contentRef.current = value
-                      // Trigger auto-save
-                      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-                      setSaveStatus("saving")
-                      saveTimerRef.current = setTimeout(async () => {
-                        if (!selectedFile || value === originalContentRef.current) return
-                        try {
-                          setIsSaving(true)
-                          const res = await fetch(`/api/projects/${projectId}/files`, {
-                            method: "PUT",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ path: selectedFile, content: value }),
-                          })
-                          if (res.ok) {
-                            originalContentRef.current = value
-                            setSaveStatus("saved")
-                            setTimeout(() => setSaveStatus("idle"), 2000)
-                          } else {
-                            setSaveStatus("error")
-                          }
-                        } catch (error) {
-                          setSaveStatus("error")
-                        } finally {
-                          setIsSaving(false)
-                        }
-                      }, 600)
+                      scheduleDebouncedSave(value)
                     }}
                     className="h-full text-sm border border-gray-200 rounded-lg overflow-hidden"
                     basicSetup={{
@@ -681,25 +619,56 @@ export default function ProjectClient({
         </div>
       </div>
 
-      {/* Right Chat Panel - Slide */}
+      {chatOpen && (
+        <button
+          type="button"
+          aria-label="Chiudi chat"
+          className="lg:hidden fixed inset-0 top-16 z-[85] bg-gray-900/40"
+          onClick={() => setChatOpen(false)}
+        />
+      )}
+
+      {/* Right chat panel — drawer on narrow screens */}
       <aside
-        className={`bg-white border-l border-gray-200 flex flex-col transition-all duration-300 ${
-          chatOpen ? "w-96 translate-x-0" : "w-0 translate-x-full overflow-hidden"
-        }`}
+        className={`fixed lg:static lg:z-auto top-16 lg:top-auto bottom-0 right-0 z-[90] bg-white border-l border-gray-200 flex flex-col transition-transform duration-300 ease-out shrink-0
+          w-full max-w-none sm:w-96 lg:w-96 lg:max-w-[24rem]
+          ${chatOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0 lg:w-0 lg:max-w-0 lg:overflow-hidden lg:border-0"}`}
       >
-        {/* Chat header */}
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🤖</span>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900">Writing Assistant</h3>
+        <div className="lg:hidden shrink-0 px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-lg shrink-0" aria-hidden>
+              🤖
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-900 truncate">Writing assistant</h3>
+              <p className="text-xs text-gray-500">Accesso al progetto</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setChatOpen(false)}
+            className="p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-200/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Chiudi pannello chat"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="hidden lg:flex px-4 py-3 bg-gray-50 border-b border-gray-200 items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-lg shrink-0" aria-hidden>
+              🤖
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-900 truncate">Writing assistant</h3>
               <p className="text-xs text-gray-500">Accesso completo al progetto</p>
             </div>
           </div>
         </div>
 
-        {/* Chat component */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden p-2 sm:p-0">
           <Chat projectId={projectId} selectedFile={selectedFile} />
         </div>
       </aside>

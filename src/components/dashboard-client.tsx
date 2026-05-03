@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Chat from "@/components/chat"
+import { useChatPanel } from "@/contexts/chat-panel-context"
 
 interface Project {
   id: string
@@ -16,8 +17,8 @@ interface DashboardClientProps {
   userId: string
 }
 
-export default function DashboardClient({ projects, userId }: DashboardClientProps) {
-  const [showChat, setShowChat] = useState(true)
+export default function DashboardClient({ projects, userId: _userId }: DashboardClientProps) {
+  const { chatOpen, setChatOpen } = useChatPanel()
   const [showModal, setShowModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState("")
   const [newProjectDesc, setNewProjectDesc] = useState("")
@@ -49,47 +50,46 @@ export default function DashboardClient({ projects, userId }: DashboardClientPro
       setNewProjectName("")
       setNewProjectDesc("")
       router.push(`/projects/${data.project.id}`)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Errore sconosciuto")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex gap-6">
+    <div className="relative flex flex-col lg:flex-row gap-6 min-h-0">
       {/* Main content */}
-      <div className={`flex-1 transition-all duration-300 ${showChat ? "mr-[400px]" : ""}`}>
-        {/* Header */}
+      <div
+        className={`flex-1 min-w-0 transition-[margin] duration-300 ${chatOpen ? "lg:mr-[400px]" : ""}`}
+      >
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">
             Gestisci i tuoi progetti di scrittura creativa
           </p>
         </div>
 
-        {/* Projects section */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          {/* Section header with create button */}
-          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <h2 className="text-lg font-semibold text-gray-900">
-              I tuoi Progetti ({projects.length})
+              I tuoi progetti ({projects.length})
             </h2>
             <button
+              type="button"
               onClick={() => setShowModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 w-full sm:w-auto"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Nuovo Progetto
+              Nuovo progetto
             </button>
           </div>
 
-          {/* Projects list */}
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {projects.length === 0 ? (
-              <div className="text-center py-12">
+              <div className="text-center py-12 px-4">
                 <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -97,6 +97,7 @@ export default function DashboardClient({ projects, userId }: DashboardClientPro
                 </div>
                 <p className="text-gray-500 mb-2">Nessun progetto ancora creato</p>
                 <button
+                  type="button"
                   onClick={() => setShowModal(true)}
                   className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                 >
@@ -109,23 +110,21 @@ export default function DashboardClient({ projects, userId }: DashboardClientPro
                   <a
                     key={project.id}
                     href={`/projects/${project.id}`}
-                    className="group block p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all"
+                    className="group block p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 truncate">
                           {project.name}
                         </h3>
                         {project.description && (
-                          <p className="mt-1 text-sm text-gray-500 line-clamp-2">
-                            {project.description}
-                          </p>
+                          <p className="mt-1 text-sm text-gray-500 line-clamp-2">{project.description}</p>
                         )}
                         <p className="mt-2 text-xs text-gray-400">
                           Creato: {new Date(project.createdAt).toLocaleDateString("it-IT")}
                         </p>
                       </div>
-                      <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
@@ -137,37 +136,60 @@ export default function DashboardClient({ projects, userId }: DashboardClientPro
         </div>
       </div>
 
-      {/* Chat slide panel */}
-      <div className={`fixed right-0 top-[64px] bottom-0 w-[400px] bg-white border-l border-gray-200 shadow-lg transform transition-transform duration-300 z-40 ${showChat ? "translate-x-0" : "translate-x-full"}`}>
-        <div className="h-full flex flex-col">
-          {/* Chat toggle button (visible when panel closed) */}
-          <button
-            onClick={() => setShowChat(!showChat)}
-            className="absolute -left-12 top-4 w-10 h-10 bg-white border border-gray-200 rounded-l-lg shadow-md flex items-center justify-center text-gray-600 hover:text-blue-600 hover:bg-gray-50"
-          >
-            {showChat ? (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-            )}
-          </button>
+      {/* Mobile backdrop */}
+      {chatOpen && (
+        <button
+          type="button"
+          aria-label="Chiudi chat"
+          className="lg:hidden fixed inset-0 top-16 z-[85] bg-gray-900/40"
+          onClick={() => setChatOpen(false)}
+        />
+      )}
 
-          {/* Chat header */}
-          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🤖</span>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">AI Assistant</h3>
-                <p className="text-xs text-gray-500">Sola lettura (Dashboard)</p>
+      {/* Re-open handle (when chat is closed) */}
+      {!chatOpen && (
+        <button
+          type="button"
+          onClick={() => setChatOpen(true)}
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-[80] hidden lg:inline-flex items-center gap-2 rounded-l-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-md hover:bg-gray-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          aria-label="Apri pannello chat"
+          title="Apri chat"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+            />
+          </svg>
+          <span className="hidden xl:inline">Chat</span>
+        </button>
+      )}
+
+      {/* Chat panel */}
+      <div
+        className={`fixed z-[90] bg-white border-l border-gray-200 shadow-xl flex flex-col transition-transform duration-300 ease-out
+          inset-x-0 top-16 bottom-0 w-full max-w-none
+          lg:inset-x-auto lg:top-16 lg:right-0 lg:bottom-0 lg:w-[400px] lg:max-w-[100vw]
+          ${chatOpen ? "translate-x-0" : "translate-x-full"}`}
+      >
+        <div className="h-full flex flex-col min-h-0">
+          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gray-50">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-lg shrink-0" aria-hidden>
+                🤖
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-gray-900 truncate">AI Assistant</h3>
+                <p className="text-xs text-gray-500">Sola lettura (dashboard)</p>
               </div>
             </div>
             <button
-              onClick={() => setShowChat(false)}
-              className="p-1 text-gray-400 hover:text-gray-600"
+              type="button"
+              onClick={() => setChatOpen(false)}
+              className="p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-200/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Chiudi pannello chat"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -175,22 +197,29 @@ export default function DashboardClient({ projects, userId }: DashboardClientPro
             </button>
           </div>
 
-          {/* Chat component */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden p-2 sm:p-0">
             <Chat />
           </div>
         </div>
       </div>
 
-      {/* Create Project Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50">
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full border border-gray-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-create-project-title"
+          >
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Crea Nuovo Progetto</h3>
+              <h3 id="modal-create-project-title" className="text-lg font-semibold text-gray-900">
+                Crea nuovo progetto
+              </h3>
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Chiudi"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -200,16 +229,15 @@ export default function DashboardClient({ projects, userId }: DashboardClientPro
 
             <form onSubmit={handleCreateProject} className="p-6 space-y-4">
               {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-                  {error}
-                </div>
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">{error}</div>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">
                   Nome del progetto *
                 </label>
                 <input
+                  id="project-name"
                   type="text"
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
@@ -221,10 +249,11 @@ export default function DashboardClient({ projects, userId }: DashboardClientPro
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="project-desc" className="block text-sm font-medium text-gray-700 mb-1">
                   Descrizione (opzionale)
                 </label>
                 <textarea
+                  id="project-desc"
                   value={newProjectDesc}
                   onChange={(e) => setNewProjectDesc(e.target.value)}
                   placeholder="Una breve descrizione del progetto..."
@@ -237,7 +266,7 @@ export default function DashboardClient({ projects, userId }: DashboardClientPro
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none"
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
                 >
                   Annulla
                 </button>
@@ -246,7 +275,7 @@ export default function DashboardClient({ projects, userId }: DashboardClientPro
                   disabled={loading || newProjectName.length < 3}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                 >
-                  {loading ? "Creazione..." : "Crea Progetto"}
+                  {loading ? "Creazione..." : "Crea progetto"}
                 </button>
               </div>
             </form>

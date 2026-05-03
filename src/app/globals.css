@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "preline/variants.css";
 
 :root {
   --foreground-rgb: 0, 0, 0;
