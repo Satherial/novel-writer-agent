@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Chat from "@/components/chat"
+import LLMCapabilityTests from "@/components/llm-capability-tests"
 import CreateProjectModal from "@/components/create-project-modal"
 import { useChatPanel } from "@/contexts/chat-panel-context"
 
@@ -198,7 +199,8 @@ export default function DashboardClient({ projects, userId: _userId }: Dashboard
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-hidden p-2 sm:p-0">
+          <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-0 space-y-4">
+            <LLMCapabilityTests />
             <Chat />
           </div>
         </div>

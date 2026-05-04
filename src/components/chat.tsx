@@ -1,23 +1,29 @@
-"use client"
+"use client";
 
-import { useState, useRef, useEffect, FormEvent } from "react"
-import { useSession } from "next-auth/react"
+import { useState, useRef, useEffect, FormEvent } from "react";
+import { useSession } from "next-auth/react";
 
 interface ChatMessage {
-  id: string
-  role: "user" | "assistant"
-  content: string
+  id: string;
+  role: "user" | "assistant";
+  content: string;
 }
 
 interface QuickActionButtonProps {
-  icon: string
-  label: string
-  prompt: string
-  onClick: (prompt: string) => void
-  disabled?: boolean
+  icon: string;
+  label: string;
+  prompt: string;
+  onClick: (prompt: string) => void;
+  disabled?: boolean;
 }
 
-function QuickActionButton({ icon, label, prompt, onClick, disabled }: QuickActionButtonProps) {
+function QuickActionButton({
+  icon,
+  label,
+  prompt,
+  onClick,
+  disabled,
+}: QuickActionButtonProps) {
   return (
     <button
       type="button"
@@ -28,21 +34,29 @@ function QuickActionButton({ icon, label, prompt, onClick, disabled }: QuickActi
       <span>{icon}</span>
       <span>{label}</span>
     </button>
-  )
+  );
 }
 
 interface WorkflowButtonProps {
-  icon: string
-  label: string
-  workflowId: string
-  onClick: (workflowId: string) => void
-  loading: string | null
-  disabled?: boolean
-  tooltip?: string
+  icon: string;
+  label: string;
+  workflowId: string;
+  onClick: (workflowId: string) => void;
+  loading: string | null;
+  disabled?: boolean;
+  tooltip?: string;
 }
 
-function WorkflowButton({ icon, label, workflowId, onClick, loading, disabled, tooltip }: WorkflowButtonProps) {
-  const isLoading = loading === workflowId
+function WorkflowButton({
+  icon,
+  label,
+  workflowId,
+  onClick,
+  loading,
+  disabled,
+  tooltip,
+}: WorkflowButtonProps) {
+  const isLoading = loading === workflowId;
 
   return (
     <button
@@ -60,9 +74,24 @@ function WorkflowButton({ icon, label, workflowId, onClick, loading, disabled, t
     >
       {isLoading ? (
         <>
-          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          <svg
+            className="w-3.5 h-3.5 animate-spin"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
           </svg>
           <span>Avvio...</span>
         </>
@@ -73,61 +102,95 @@ function WorkflowButton({ icon, label, workflowId, onClick, loading, disabled, t
         </>
       )}
     </button>
-  )
+  );
 }
 
 interface ChatProps {
-  projectId?: string
-  selectedFile?: string | null
+  projectId?: string;
+  selectedFile?: string | null;
 }
 
 export default function Chat({ projectId, selectedFile }: ChatProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [workflowLoading, setWorkflowLoading] = useState<string | null>(null)
-  const { data: session } = useSession()
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [workflowLoading, setWorkflowLoading] = useState<string | null>(null);
+  const { data: session } = useSession();
 
   // Track if history has been loaded to prevent overwriting new messages
-  const hasLoadedHistory = useRef(false)
+  const hasLoadedHistory = useRef(false);
+  // Counter for unique message IDs to avoid duplicate keys
+  const messageIdCounter = useRef(0);
+  const generateMessageId = () => {
+    messageIdCounter.current += 1;
+    return `${Date.now()}-${messageIdCounter.current}`;
+  };
 
   // Load chat history from database on mount only
   useEffect(() => {
     if (session?.user?.id && !hasLoadedHistory.current) {
-      loadChatHistory()
-      hasLoadedHistory.current = true
+      loadChatHistory();
+      hasLoadedHistory.current = true;
     }
-  }, [session?.user?.id, projectId])
+  }, [session?.user?.id, projectId]);
 
   const loadChatHistory = async () => {
     try {
-      const url = new URL("/api/chat/history", window.location.origin)
+      const url = new URL("/api/chat/history", window.location.origin);
       if (projectId) {
-        url.searchParams.append("projectId", projectId)
+        url.searchParams.append("projectId", projectId);
       }
 
-      const response = await fetch(url.toString())
+      const response = await fetch(url.toString());
       if (response.ok) {
-        const data = await response.json()
+        const data = await response.json();
         // Only set messages if we don't have any yet (prevent overwriting streaming response)
-        setMessages(prev => prev.length === 0 ? (data.messages || []) : prev)
+        setMessages((prev) => (prev.length === 0 ? data.messages || [] : prev));
       }
     } catch (error) {
-      console.error("[Chat] Error loading history:", error)
+      console.error("[Chat] Error loading history:", error);
     }
-  }
+  };
+
+  // Reset chat history (only for dashboard)
+  const handleResetChat = async () => {
+    if (!confirm("Sei sicuro di voler cancellare la cronologia della chat?")) {
+      return;
+    }
+
+    try {
+      const url = new URL("/api/chat/history", window.location.origin);
+      // No projectId = dashboard chat
+
+      const response = await fetch(url.toString(), {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setMessages([]); // Clear local state
+        hasLoadedHistory.current = false; // Reset flag so we can reload if needed
+        console.log("[Chat] Reset:", data.message);
+      } else {
+        throw new Error("Failed to reset chat");
+      }
+    } catch (error) {
+      console.error("[Chat] Error resetting chat:", error);
+      setError("Errore durante la cancellazione della cronologia");
+    }
+  };
 
   // Trigger workflow via API
   const triggerWorkflow = async (workflowId: string) => {
     if (!projectId) {
-      setError("Seleziona un progetto per usare i workflow")
-      return
+      setError("Seleziona un progetto per usare i workflow");
+      return;
     }
 
-    setWorkflowLoading(workflowId)
-    setError(null)
+    setWorkflowLoading(workflowId);
+    setError(null);
 
     try {
       const res = await fetch(`/api/workflows/${workflowId}`, {
@@ -137,55 +200,64 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
           projectId,
           filePath: selectedFile,
         }),
-      })
+      });
 
-      const data = await res.json()
+      const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Workflow failed")
+        throw new Error(data.error || "Workflow failed");
       }
 
       // Add workflow response as system message
       const workflowMessage: ChatMessage = {
-        id: Date.now().toString(),
+        id: generateMessageId(),
         role: "assistant",
         content: `🚀 **${data.workflow}** attivato!\n\n${data.data?.message || ""}\n\n${data.prompt ? `💡 **Prompt suggerito:**\n\`${data.prompt}\`` : ""}`,
-      }
+      };
 
-      setMessages((prev) => [...prev, workflowMessage])
+      setMessages((prev) => [...prev, workflowMessage]);
 
       // If there's a prompt, also set it in input
       if (data.prompt) {
-        setInput(data.prompt)
+        setInput(data.prompt);
       }
     } catch (err: any) {
-      setError(err.message || "Errore workflow")
+      setError(err.message || "Errore workflow");
     } finally {
-      setWorkflowLoading(null)
+      setWorkflowLoading(null);
     }
-  }
+  };
 
   // Auto-scroll to bottom quando arrivano nuovi messaggi
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isLoading) return
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
 
     const userMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: generateMessageId(),
       role: "user",
       content: input,
-    }
+    };
 
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
-    setError(null)
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
+    setError(null);
 
     try {
+      // Create empty assistant message first so UI updates immediately
+      const assistantMessageId = generateMessageId();
+      const assistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,70 +265,108 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
           messages: [...messages, userMessage],
           projectId,
         }),
-      })
+      });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
       // Read the stream
-      const reader = response.body?.getReader()
+      const reader = response.body?.getReader();
       if (!reader) {
-        throw new Error("No reader available")
+        throw new Error("No reader available");
       }
 
-      const decoder = new TextDecoder()
-      let assistantContent = ""
-      let chunkCount = 0
-      console.log("[Chat] Starting to read stream...")
-      
+      const decoder = new TextDecoder();
+      let assistantContent = "";
+      let chunkCount = 0;
+      console.log("[Chat] Starting to read stream...");
+
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await reader.read();
         if (done) {
-          console.log("[Chat] Stream complete, total chunks:", chunkCount, "content length:", assistantContent.length)
-          break
+          console.log(
+            "[Chat] Stream complete, total chunks:",
+            chunkCount,
+            "content length:",
+            assistantContent.length,
+          );
+          break;
         }
-        
-        chunkCount++
-        const text = decoder.decode(value, { stream: true })
-        console.log("[Chat] Chunk", chunkCount, ":", text.substring(0, 50))
-        assistantContent += text
-        
-        // Update UI with new content
-        setMessages(prev => {
-          const newMessages = [...prev]
-          const lastMsg = newMessages[newMessages.length - 1]
-          if (lastMsg?.role === "assistant") {
-            lastMsg.content = assistantContent
+
+        chunkCount++;
+        const text = decoder.decode(value, { stream: true });
+        console.log("[Chat] Chunk", chunkCount, ":", text.substring(0, 50));
+        assistantContent += text;
+
+        // Update UI with new content - update the assistant message we added earlier
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          const messageIdx = newMessages.findIndex(
+            (msg) => msg.id === assistantMessageId,
+          );
+          if (messageIdx !== -1) {
+            newMessages[messageIdx].content = assistantContent;
           }
-          return newMessages
-        })
+          return newMessages;
+        });
       }
-      
-      console.log("[Chat] Final content length:", assistantContent.length)
-      
+
+      console.log("[Chat] Final content length:", assistantContent.length);
     } catch (err: any) {
-      setError(err.message || "Errore durante la richiesta")
-      console.error("[Chat] Error:", err)
+      setError(err.message || "Errore durante la richiesta");
+      console.error("[Chat] Error:", err);
+      // Remove the empty assistant message if there was an error
+      setMessages((prev) => prev.filter((msg) => msg.content !== ""));
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-white rounded-lg border border-gray-200 shadow-sm">
-      <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+      <div className="shrink-0 px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-lg flex justify-between items-center">
         <h2 className="text-sm font-semibold text-gray-800">
           🤖 Assistente scrittura creativa
-          {projectId && <span className="ml-2 text-xs font-normal text-gray-500">(progetto attivo)</span>}
+          {projectId && (
+            <span className="ml-2 text-xs font-normal text-gray-500">
+              (progetto attivo)
+            </span>
+          )}
         </h2>
+        {/* Reset button only for dashboard chat */}
+        {!projectId && messages.length > 0 && (
+          <button
+            onClick={handleResetChat}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+            title="Cancella cronologia chat"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
+            Nuova chat
+          </button>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center text-gray-400 py-8">
-            <p className="text-sm">Inizia una conversazione con l'assistente AI</p>
+            <p className="text-sm">
+              Inizia una conversazione con l'assistente AI
+            </p>
             <p className="text-xs mt-1">
               Prova: "Leggi il mio outline" o "Elenca i personaggi"
             </p>
@@ -276,7 +386,9 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
               }`}
             >
               {/* Contenuto messaggio */}
-              <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+              <div className="text-sm whitespace-pre-wrap">
+                {message.content}
+              </div>
 
               {/* Timestamp */}
               <div
@@ -294,11 +406,22 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
         {isLoading && (
           <div className="flex justify-start">
             <div className="bg-gray-100 rounded-lg px-4 py-2 flex items-center gap-2">
-              <span className="animate-pulse text-sm text-gray-600">Sto scrivendo</span>
+              <span className="animate-pulse text-sm text-gray-600">
+                Sto scrivendo
+              </span>
               <span className="flex gap-1">
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></span>
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></span>
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></span>
+                <span
+                  className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0ms" }}
+                ></span>
+                <span
+                  className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "150ms" }}
+                ></span>
+                <span
+                  className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "300ms" }}
+                ></span>
               </span>
             </div>
           </div>
@@ -361,7 +484,9 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
       {/* Workflow Triggers */}
       {projectId && (
         <div className="px-4 py-2 border-t border-gray-200 bg-blue-50">
-          <p className="text-xs text-blue-600 mb-2 font-medium">🚀 Workflow AI:</p>
+          <p className="text-xs text-blue-600 mb-2 font-medium">
+            🚀 Workflow AI:
+          </p>
           <div className="flex flex-wrap gap-2">
             <WorkflowButton
               icon="🤖"
@@ -407,7 +532,10 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
       )}
 
       {/* Input area */}
-      <form onSubmit={handleSubmit} className="shrink-0 p-4 border-t border-gray-200 bg-white">
+      <form
+        onSubmit={handleSubmit}
+        className="shrink-0 p-4 border-t border-gray-200 bg-white"
+      >
         <div className="flex gap-2">
           <textarea
             value={input}
@@ -418,8 +546,8 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
             disabled={isLoading}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault()
-                handleSubmit(e)
+                e.preventDefault();
+                handleSubmit(e);
               }
             }}
           />
@@ -436,5 +564,5 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
         </p>
       </form>
     </div>
-  )
+  );
 }
