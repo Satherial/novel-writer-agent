@@ -2,6 +2,12 @@
 
 import { useState, useRef, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
+import {
+  ChapterWorkflowModal,
+  CharacterWorkflowModal,
+  DialogWorkflowModal,
+  ReviewWorkflowModal,
+} from "./workflow-modals";
 
 interface ChatMessage {
   id: string;
@@ -9,101 +15,6 @@ interface ChatMessage {
   content: string;
 }
 
-interface QuickActionButtonProps {
-  icon: string;
-  label: string;
-  prompt: string;
-  onClick: (prompt: string) => void;
-  disabled?: boolean;
-}
-
-function QuickActionButton({
-  icon,
-  label,
-  prompt,
-  onClick,
-  disabled,
-}: QuickActionButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={() => onClick(prompt)}
-      disabled={disabled}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-    >
-      <span>{icon}</span>
-      <span>{label}</span>
-    </button>
-  );
-}
-
-interface WorkflowButtonProps {
-  icon: string;
-  label: string;
-  workflowId: string;
-  onClick: (workflowId: string) => void;
-  loading: string | null;
-  disabled?: boolean;
-  tooltip?: string;
-}
-
-function WorkflowButton({
-  icon,
-  label,
-  workflowId,
-  onClick,
-  loading,
-  disabled,
-  tooltip,
-}: WorkflowButtonProps) {
-  const isLoading = loading === workflowId;
-
-  return (
-    <button
-      type="button"
-      onClick={() => onClick(workflowId)}
-      disabled={disabled || isLoading}
-      title={tooltip}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
-        isLoading
-          ? "bg-blue-100 text-blue-700 border border-blue-200 cursor-wait"
-          : disabled
-            ? "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
-            : "bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 hover:border-blue-300"
-      }`}
-    >
-      {isLoading ? (
-        <>
-          <svg
-            className="w-3.5 h-3.5 animate-spin"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <span>Avvio...</span>
-        </>
-      ) : (
-        <>
-          <span>{icon}</span>
-          <span>{label}</span>
-        </>
-      )}
-    </button>
-  );
-}
 
 interface ChatProps {
   projectId?: string;
@@ -117,6 +28,7 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [workflowLoading, setWorkflowLoading] = useState<string | null>(null);
+  const [activeModal, setActiveModal] = useState<string | null>(null);
   const { data: session } = useSession();
 
   // Track if history has been loaded to prevent overwriting new messages
@@ -182,8 +94,8 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
     }
   };
 
-  // Trigger workflow via API
-  const triggerWorkflow = async (workflowId: string) => {
+  // Handle workflow submission from modals
+  const handleWorkflowSubmit = async (workflowId: string, formData: any) => {
     if (!projectId) {
       setError("Seleziona un progetto per usare i workflow");
       return;
@@ -192,6 +104,89 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
     setWorkflowLoading(workflowId);
     setError(null);
 
+    // Generate optimized prompt based on form data
+    let optimizedPrompt = "";
+    switch (workflowId) {
+      case "chapter-generation":
+        optimizedPrompt = `Scrivi il Capitolo ${formData.chapterNum}${formData.title ? ` - "${formData.title}"` : ""} per il romanzo.
+
+Tono: ${formData.tone}
+${formData.keyPoints ? `\nPunti chiave da trattare:\n${formData.keyPoints}` : ""}
+
+Per favore, scrivi un capitolo completo con inizio, sviluppo e conclusione. Mantieni uno stile narrativo coerente con il genere del romanzo.`;
+        break;
+
+      case "character-generation":
+        optimizedPrompt = `Crea una scheda personaggio completa per "${formData.name}".
+
+Ruolo: ${formData.role}
+${formData.age ? `Età: ${formData.age}\n` : ""}${formData.gender ? `Sesso/Genere: ${formData.gender}\n` : ""}
+${formData.traits ? `Caratteristiche distintive:\n${formData.traits}\n` : ""}
+
+Per favore, crea una scheda dettagliata che includa:
+- Nome completo e soprannomi
+- Aspetto fisico dettagliato
+- Personalità e tratti caratteriali
+- Background/storia personale
+- Motivazioni e obiettivi
+- Relazioni con altri personaggi
+- Arco narrativo previsto`;
+        break;
+
+      case "dialog-generation":
+        optimizedPrompt = `Genera un dialogo tra ${formData.char1} e ${formData.char2}.
+
+Tema/Argomento: ${formData.topic}
+Tensione emotiva: ${formData.tension}
+${formData.location ? `Luogo: ${formData.location}\n` : ""}
+
+Per favore, crea un dialogo realistico e coinvolgente che:
+- Rifletta la personalità di entrambi i personaggi
+- Sveli informazioni importanti sulla trama o sui personaggi
+- Mantenga un tono naturale e credibile
+- Usi tagli di dialogo appropriati ("..." per pause, "—" per interruzioni)`;
+        break;
+
+      case "text-review":
+        const focusAreas = Object.entries(formData.focus)
+          .filter(([_, v]) => v)
+          .map(([k]) => {
+            switch (k) {
+              case "grammar": return "grammatica e ortografia";
+              case "style": return "stile e scorrevolezza";
+              case "flow": return "struttura e ritmo";
+              case "dialogue": return "dialoghi";
+              default: return k;
+            }
+          })
+          .join(", ");
+        const intensityLabels = ["leggero", "moderato", "intenso", "aggressivo"];
+        optimizedPrompt = `Revisiona e migliora il testo del file selezionato.
+
+Focus revisione: ${focusAreas}
+Livello di intervento: ${intensityLabels[formData.intensity - 1]}
+${formData.notes ? `\nNote specifiche:\n${formData.notes}` : ""}
+
+Per favore:
+1. Leggi attentamente il testo
+2. Identifica i punti da migliorare secondo i focus indicati
+3. Proponi una versione revisionata del testo
+4. Spiega le principali modifiche effettuate`;
+        break;
+    }
+
+    // Add user message with the optimized prompt
+    const userMessage: ChatMessage = {
+      id: generateMessageId(),
+      role: "user",
+      content: optimizedPrompt,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    // Also set it in input for immediate sending
+    setInput(optimizedPrompt);
+
+    // Trigger the workflow API
     try {
       const res = await fetch(`/api/workflows/${workflowId}`, {
         method: "POST",
@@ -199,6 +194,7 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
         body: JSON.stringify({
           projectId,
           filePath: selectedFile,
+          options: formData,
         }),
       });
 
@@ -208,21 +204,16 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
         throw new Error(data.error || "Workflow failed");
       }
 
-      // Add workflow response as system message
-      const workflowMessage: ChatMessage = {
+      // Add confirmation message
+      const confirmMessage: ChatMessage = {
         id: generateMessageId(),
         role: "assistant",
-        content: `🚀 **${data.workflow}** attivato!\n\n${data.data?.message || ""}\n\n${data.prompt ? `💡 **Prompt suggerito:**\n\`${data.prompt}\`` : ""}`,
+        content: `🚀 **${data.workflow}** avviato!\n\n${data.data?.message || "Sto elaborando la richiesta..."}`,
       };
-
-      setMessages((prev) => [...prev, workflowMessage]);
-
-      // If there's a prompt, also set it in input
-      if (data.prompt) {
-        setInput(data.prompt);
-      }
+      setMessages((prev) => [...prev, confirmMessage]);
     } catch (err: any) {
-      setError(err.message || "Errore workflow");
+      // Just log the error - the chat will still work with the prompt
+      console.error("[Workflow] Error:", err);
     } finally {
       setWorkflowLoading(null);
     }
@@ -439,98 +430,91 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Actions - only in project chat */}
+      {/* Workflow AI - Unica sezione consolidata */}
       {projectId && (
-        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
-          <p className="text-xs text-gray-500 mb-2">Azioni rapide:</p>
-          <div className="flex flex-wrap gap-2">
-            <QuickActionButton
-              icon="💬"
-              label="Genera dialogo"
-              prompt="Genera un dialogo tra i personaggi del progetto"
-              onClick={setInput}
+        <div className="px-4 py-3 border-t border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <p className="text-xs font-semibold text-blue-700 mb-3 flex items-center gap-1">
+            <span>🚀</span> Workflow AI
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveModal("chapter")}
               disabled={isLoading}
-            />
-            <QuickActionButton
-              icon="🎬"
-              label="Descrivi scena"
-              prompt="Descrivi una scena ambientata nel progetto"
-              onClick={setInput}
+              className="inline-flex items-center justify-center gap-2 px-3 py-2.5 bg-white border border-blue-200 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-50 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span>📝</span>
+              <span>Scrivi Capitolo</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModal("character")}
               disabled={isLoading}
-            />
-            <QuickActionButton
-              icon="👤"
-              label="Crea personaggio"
-              prompt="Crea un nuovo personaggio per il romanzo"
-              onClick={setInput}
+              className="inline-flex items-center justify-center gap-2 px-3 py-2.5 bg-white border border-blue-200 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-50 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span>👤</span>
+              <span>Crea Personaggio</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModal("dialog")}
               disabled={isLoading}
-            />
-            <QuickActionButton
-              icon="📖"
-              label="Genera capitolo"
-              prompt="Genera un nuovo capitolo basato sull'outline"
-              onClick={setInput}
-              disabled={isLoading}
-            />
-            <QuickActionButton
-              icon="✍️"
-              label="Revisiona testo"
-              prompt="Revisiona e migliora il testo selezionato"
-              onClick={setInput}
-              disabled={isLoading}
-            />
+              className="inline-flex items-center justify-center gap-2 px-3 py-2.5 bg-white border border-blue-200 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-50 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span>💭</span>
+              <span>Genera Dialogo</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModal("review")}
+              disabled={isLoading || !selectedFile}
+              className={`inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-colors ${
+                !selectedFile
+                  ? "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+                  : "bg-white text-blue-700 border border-blue-200 hover:bg-blue-50 hover:border-blue-300"
+              }`}
+            >
+              <span>🔍</span>
+              <span>Revisiona Testo</span>
+            </button>
           </div>
+          {!selectedFile && (
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              💡 Seleziona un file per usare "Revisiona Testo"
+            </p>
+          )}
         </div>
       )}
 
-      {/* Workflow Triggers */}
+      {/* Workflow Modals */}
       {projectId && (
-        <div className="px-4 py-2 border-t border-gray-200 bg-blue-50">
-          <p className="text-xs text-blue-600 mb-2 font-medium">
-            🚀 Workflow AI:
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <WorkflowButton
-              icon="🤖"
-              label="Genera Capitolo AI"
-              workflowId="chapter-generation"
-              onClick={triggerWorkflow}
-              loading={workflowLoading}
-              disabled={!selectedFile}
-              tooltip={!selectedFile ? "Seleziona un file capitolo" : undefined}
-            />
-            <WorkflowButton
-              icon="🎭"
-              label="Genera Personaggi"
-              workflowId="character-generation"
-              onClick={triggerWorkflow}
-              loading={workflowLoading}
-            />
-            <WorkflowButton
-              icon="💭"
-              label="Genera Dialogo"
-              workflowId="dialog-generation"
-              onClick={triggerWorkflow}
-              loading={workflowLoading}
-            />
-            <WorkflowButton
-              icon="🌄"
-              label="Descrivi Scena"
-              workflowId="scene-description"
-              onClick={triggerWorkflow}
-              loading={workflowLoading}
-            />
-            <WorkflowButton
-              icon="🔍"
-              label="Revisiona Testo"
-              workflowId="text-review"
-              onClick={triggerWorkflow}
-              loading={workflowLoading}
-              disabled={!selectedFile}
-              tooltip={!selectedFile ? "Seleziona un file" : undefined}
-            />
-          </div>
-        </div>
+        <>
+          <ChapterWorkflowModal
+            isOpen={activeModal === "chapter"}
+            onClose={() => setActiveModal(null)}
+            onSubmit={(data) => handleWorkflowSubmit("chapter-generation", data)}
+            projectId={projectId}
+          />
+          <CharacterWorkflowModal
+            isOpen={activeModal === "character"}
+            onClose={() => setActiveModal(null)}
+            onSubmit={(data) => handleWorkflowSubmit("character-generation", data)}
+            projectId={projectId}
+          />
+          <DialogWorkflowModal
+            isOpen={activeModal === "dialog"}
+            onClose={() => setActiveModal(null)}
+            onSubmit={(data) => handleWorkflowSubmit("dialog-generation", data)}
+            projectId={projectId}
+          />
+          <ReviewWorkflowModal
+            isOpen={activeModal === "review"}
+            onClose={() => setActiveModal(null)}
+            onSubmit={(data) => handleWorkflowSubmit("text-review", data)}
+            projectId={projectId}
+            selectedFile={selectedFile}
+          />
+        </>
       )}
 
       {/* Input area */}

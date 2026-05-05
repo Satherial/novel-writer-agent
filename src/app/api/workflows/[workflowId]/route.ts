@@ -59,105 +59,207 @@ export async function POST(
   }
 }
 
-// Chapter Generation Workflow
+// Chapter Generation Workflow - Agentic: Creates chapter file and returns prompt
 async function executeChapterGenerationWorkflow(
   userId: string,
   projectId: string,
   filePath: string,
   options?: any
 ) {
-  // Step 1: Verify file exists
-  const { fileExists } = await import("@/lib/project-fs")
-  const exists = await fileExists(userId, projectId, filePath)
+  const { readMarkdownFile, writeMarkdownFile, fileExists } = await import("@/lib/project-fs")
   
-  if (!exists) {
-    return NextResponse.json({ error: "Source file not found" }, { status: 404 })
+  // Read outline for context
+  let outlineContent = ""
+  try {
+    const outlineResult = await readMarkdownFile(userId, projectId, "outline.md")
+    outlineContent = outlineResult.content
+  } catch {
+    // Outline might not exist
   }
 
-  // Create AI version filename
-  const baseName = filePath.replace('.md', '')
-  const aiFilePath = `${baseName}_AI.md`
+  // Determine chapter file path
+  const chapterNum = options?.chapterNum || 1
+  const chapterTitle = options?.title || `Capitolo ${chapterNum}`
+  const chapterFileName = `chapters/capitolo_${chapterNum.toString().padStart(2, '0')}_${chapterTitle.toLowerCase().replace(/\s+/g, '_')}.md`
+  
+  // Check if file already exists
+  const exists = await fileExists(userId, projectId, chapterFileName)
+  
+  // Create chapter with template
+  const chapterTemplate = `# ${chapterTitle}
+
+<!-- Generato da workflow AI - Tono: ${options?.tone || 'drammatico'} -->
+
+${options?.keyPoints ? `## Punti chiave da sviluppare\n${options.keyPoints}\n\n` : ''}
+## Contenuto
+
+_In attesa di generazione AI..._
+`
+
+  if (!exists) {
+    await writeMarkdownFile(userId, projectId, chapterFileName, chapterTemplate)
+  }
 
   return NextResponse.json({
     success: true,
-    message: "Chapter generation workflow started",
+    message: "Chapter workflow ready",
     workflow: "chapter-generation",
-    steps: [
-      { step: 1, name: "duplicate", status: "pending", output: aiFilePath },
-      { step: 2, name: "analyze", status: "pending" },
-      { step: 3, name: "split", status: "pending" },
-      { step: 4, name: "write_sections", status: "pending" },
-      { step: 5, name: "compare_merge", status: "pending" }
-    ],
     data: {
-      sourceFile: filePath,
-      targetFile: aiFilePath,
-      message: "Il workflow di generazione capitolo è stato avviato. L'AI analizzerà il tuo abbozzo e genererà una versione in bella."
+      chapterFile: chapterFileName,
+      chapterNum,
+      chapterTitle,
+      tone: options?.tone,
+      outlinePresent: !!outlineContent,
+      message: `File capitolo creato: ${chapterFileName}. L'AI può ora generare il contenuto basandosi sull'outline e i punti chiave indicati.`
     }
   })
 }
 
-// Character Generation Workflow
+// Character Generation Workflow - Agentic: Creates character file
 async function executeCharacterGenerationWorkflow(
   userId: string,
   projectId: string,
   options?: any
 ) {
-  const notesFile = "characters/appunti_personaggi.txt"
+  const { readMarkdownFile, writeMarkdownFile } = await import("@/lib/project-fs")
+  
+  // Read outline for context
+  let outlineContent = ""
+  try {
+    const outlineResult = await readMarkdownFile(userId, projectId, "outline.md")
+    outlineContent = outlineResult.content
+  } catch {
+    // Outline might not exist
+  }
+
+  const charName = options?.name || "Nuovo Personaggio"
+  const safeFileName = charName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+  const charFileName = `characters/${safeFileName}.md`
+
+  // Create character template
+  const charTemplate = `---
+nome: "${charName}"
+ruolo: "${options?.role || 'secondario'}"
+${options?.age ? `eta: "${options.age}"\n` : ''}${options?.gender ? `sesso: "${options.gender}"\n` : ''}creato: "${new Date().toISOString()}"
+---
+
+# ${charName}
+
+## Informazioni Base
+- **Ruolo**: ${options?.role || 'Secondario'}
+${options?.age ? `- **Età**: ${options.age}\n` : ''}${options?.gender ? `- **Sesso/Genere**: ${options.gender}\n` : ''}
+
+## Caratteristiche
+${options?.traits || '_Da definire..._'}
+
+## Descrizione Dettagliata
+
+### Aspetto Fisico
+_Da sviluppare con AI..._
+
+### Personalità
+_Da sviluppare con AI..._
+
+### Background
+_Da sviluppare con AI..._
+
+### Motivazioni e Obiettivi
+_Da sviluppare con AI..._
+
+### Relazioni
+_Da sviluppare con AI..._
+
+## Arco Narrativo
+_Da sviluppare con AI..._
+`
+
+  await writeMarkdownFile(userId, projectId, charFileName, charTemplate)
 
   return NextResponse.json({
     success: true,
-    message: "Character generation workflow started",
+    message: "Character workflow completed",
     workflow: "character-generation",
-    steps: [
-      { step: 1, name: "read_outline", status: "pending" },
-      { step: 2, name: "read_characters", status: "pending" },
-      { step: 3, name: "create_notes", status: "pending", output: notesFile },
-      { step: 4, name: "generate_new", status: "pending" },
-      { step: 5, name: "cleanup", status: "pending" }
-    ],
     data: {
-      notesFile,
-      message: "Il workflow di generazione personaggi è stato avviato. L'AI analizzerà l'outline e i personaggi esistenti per crearne di nuovi."
+      characterFile: charFileName,
+      characterName: charName,
+      outlinePresent: !!outlineContent,
+      message: `Scheda personaggio creata: ${charFileName}. L'AI può ora completare i dettagli basandosi sull'outline e le caratteristiche indicate.`
     }
   })
 }
 
-// Dialog Generation Workflow
+// Dialog Generation Workflow - Returns dialog config for chat
 async function executeDialogGenerationWorkflow(
   userId: string,
   projectId: string,
   options?: any
 ) {
+  const { readMarkdownFile } = await import("@/lib/project-fs")
+  
+  // Try to read character profiles if they exist
+  let char1Profile = ""
+  let char2Profile = ""
+  
+  try {
+    const char1File = await readMarkdownFile(userId, projectId, `characters/${options?.char1?.toLowerCase().replace(/\s+/g, '_')}.md`)
+    char1Profile = char1File.content
+  } catch {
+    // Character file might not exist
+  }
+  
+  try {
+    const char2File = await readMarkdownFile(userId, projectId, `characters/${options?.char2?.toLowerCase().replace(/\s+/g, '_')}.md`)
+    char2Profile = char2File.content
+  } catch {
+    // Character file might not exist
+  }
+
   return NextResponse.json({
     success: true,
-    message: "Dialog generation prompt ready",
+    message: "Dialog generation ready",
     workflow: "dialog-generation",
-    prompt: "Genera un dialogo realistico tra i personaggi del progetto. Considera le personalità, le motivazioni e le relazioni tra i personaggi. Il dialogo deve essere naturale e rivelare qualcosa di importante sulla trama o sui personaggi.",
     data: {
-      message: "Prompt per generazione dialogo pronto. Usa questo prompt nella chat per generare un dialogo."
+      char1: options?.char1,
+      char2: options?.char2,
+      topic: options?.topic,
+      tension: options?.tension,
+      location: options?.location,
+      char1ProfilePresent: !!char1Profile,
+      char2ProfilePresent: !!char2Profile,
+      message: `Configurazione dialogo pronta tra ${options?.char1} e ${options?.char2}. L'AI genererà il dialogo basandosi sul tema "${options?.topic}" con tono ${options?.tension}.`
     }
   })
 }
 
-// Scene Description Workflow
+// Scene Description Workflow - Simple prompt-based
 async function executeSceneDescriptionWorkflow(
   userId: string,
   projectId: string,
   options?: any
 ) {
+  const { readMarkdownFile } = await import("@/lib/project-fs")
+  
+  // Read outline for context
+  let outlineContent = ""
+  try {
+    const outlineResult = await readMarkdownFile(userId, projectId, "outline.md")
+    outlineContent = outlineResult.content
+  } catch {
+    // Outline might not exist
+  }
+
   return NextResponse.json({
     success: true,
-    message: "Scene description prompt ready",
+    message: "Scene description ready",
     workflow: "scene-description",
-    prompt: "Descrivi una scena vivida e immersiva per il romanzo. Considera l'ambientazione, l'atmosfera, i sensi (vista, udito, olfatto, tatto, gusto) e come la scena contribuisce alla trama o allo sviluppo dei personaggi.",
     data: {
-      message: "Prompt per descrizione scena pronto. Usa questo prompt nella chat per descrivere una scena."
+      outlinePresent: !!outlineContent,
+      message: "Pronto per descrivere una scena. L'AI creerà una descrizione vivida considerando l'ambientazione e l'atmosfera del romanzo."
     }
   })
 }
 
-// Text Review Workflow
+// Text Review Workflow - Agentic: Reads file and prepares review
 async function executeTextReviewWorkflow(
   userId: string,
   projectId: string,
@@ -168,14 +270,41 @@ async function executeTextReviewWorkflow(
     return NextResponse.json({ error: "File path required" }, { status: 400 })
   }
 
+  const { readMarkdownFile } = await import("@/lib/project-fs")
+  
+  // Read the file to be reviewed
+  let fileContent = ""
+  try {
+    const fileResult = await readMarkdownFile(userId, projectId, filePath)
+    fileContent = fileResult.content
+  } catch (error: any) {
+    return NextResponse.json({ 
+      error: `Cannot read file: ${error.message}` 
+    }, { status: 404 })
+  }
+
+  // Get focus areas
+  const focusAreas = options?.focus || {
+    grammar: true,
+    style: true,
+    flow: true,
+    dialogue: false
+  }
+
+  const activeFocus = Object.entries(focusAreas)
+    .filter(([_, v]) => v)
+    .map(([k]) => k)
+
   return NextResponse.json({
     success: true,
-    message: "Text review workflow ready",
+    message: "Text review ready",
     workflow: "text-review",
-    prompt: `Revisiona e migliora il testo del file "${filePath}". Correggi errori grammaticali, migliora lo stile, rendi il testo più scorrevole e coinvolgente, mantenendo intatto il significato originale.`,
     data: {
       filePath,
-      message: "Prompt per revisione testo pronto. Usa questo prompt nella chat per revisionare il testo selezionato."
+      fileSize: fileContent.length,
+      focusAreas: activeFocus,
+      intensity: options?.intensity || 2,
+      message: `File "${filePath}" caricato (${fileContent.length} caratteri). L'AI eseguirà la revisione con focus su: ${activeFocus.join(', ')}.`
     }
   })
 }

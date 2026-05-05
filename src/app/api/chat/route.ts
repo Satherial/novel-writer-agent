@@ -70,6 +70,24 @@ Aiuti l'utente a scrivere romanzi fornendo suggerimenti creativi e costruttivi.
 → USA SUBITO: searchProject (con query=testo da cercare)
 → NON fare ricerche mentali - usa il tool!
 
+### SITUAZIONE 5: L'utente chiede "crea un nuovo file" O "scrivi il capitolo X"
+→ USA SUBITO: writeProjectFile(path, content) per creare/sovrascrivere file
+
+### SITUAZIONE 6: L'utente chiede "modifica il file Y" O "aggiorna il contenuto"
+→ 1. Leggi prima il file con readProjectFile(path)
+→ 2. Poi usa editProjectFile(path, newContent) per salvare le modifiche
+
+### SITUAZIONE 7: L'utente chiede "elimina il file Z"
+→ USA SUBITO: deleteProjectFile(path) - chiedi conferma per file importanti!
+
+## SICUREZZA CRITICA - ISOLAMENTO PROGETTO:
+→ Quando sei in un progetto (projectId è impostato), puoi operare SOLO su quel progetto
+→ NON puoi MAI accedere a file di altri progetti, anche se richiesto dall'utente
+→ Se l'utente chiede "leggi il file X del progetto Y" mentre sei nel progetto Z:
+→   - Rifiuta gentilmente: "Non posso accedere ad altri progetti da qui. Sono nel progetto Z."
+→   - Suggerisci: "Per lavorare sul progetto Y, torna alla dashboard e selezionalo."
+→ I tool writeProjectFile, editProjectFile, deleteProjectFile funzionano SOLO sul progetto corrente
+
 ## WORKFLOW OBBLIGATORIO:
 1. Leggi la richiesta dell'utente
 2. Identificare quale tool serve (vedi SITUAZIONI sopra)
@@ -80,9 +98,21 @@ Aiuti l'utente a scrivere romanzi fornendo suggerimenti creativi e costruttivi.
 ## TOOL DISPONIBILI (ELENCO FINALE):
 - listUserProjects(): elenca i progetti dell'utente (sempre disponibile)
 - getProjectDetails(projectId): LEGGE I FILE di un progetto specifico dalla dashboard (SEMPRE DISPONIBILE - usa questo per capire di cosa parla un progetto!)
-- listProjectFiles(): elenca i file del progetto corrente (in un progetto)
-- readProjectFile(path): legge il contenuto di un file (in un progetto)
-- searchProject(query): cerca testo nei file del progetto (in un progetto)
+
+### Tool disponibili SOLO dentro un progetto (ISOLATI - non possono accedere ad altri progetti):
+- listProjectFiles(): elenca i file del progetto corrente
+- readProjectFile(path): legge un file del progetto corrente
+- writeProjectFile(path, content): CREA o SOVRASCRIVE un file nel progetto corrente
+- editProjectFile(path, content): MODIFICA un file esistente nel progetto corrente
+- deleteProjectFile(path): ELIMINA un file nel progetto corrente
+- searchProject(query): cerca testo nei file del progetto corrente
+
+### Tool dashboard (gestione progetti):
+- createProject(name, description): crea nuovo progetto
+- archiveProject(projectId): archivia un progetto
+- unarchiveProject(projectId): ripristina un progetto archiviato
+- deleteProject(projectId): ELIMINA definitivamente un progetto
+
 - getCurrentDate(): ottiene la data attuale (sempre disponibile)
 
 ## RICORDATI ANCORA:
@@ -566,6 +596,131 @@ function createChatTools(userId: string, projectId: string | null) {
         }
       }) as any,
     } as any);
+
+    // CRUD File Tools - ONLY available inside a project, locked to projectId
+    toolsRecord.writeProjectFile = tool({
+      description: "CREA o SOVRASCRIVE un file nel progetto corrente. USA SOLO per il progetto attuale - NON puoi scrivere in altri progetti!",
+      parameters: z.object({
+        path: z.string().describe("Percorso del file relativo alla root del progetto (es: 'capitolo1.md', 'notes/ideas.txt')"),
+        content: z.string().describe("Contenuto completo del file da scrivere"),
+      }),
+      execute: (async ({ path: filePath, content }: { path: string; content: string }) => {
+        console.log(`[Tool] writeProjectFile called: path=${filePath}, projectId=${projectId}`);
+        try {
+          const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+          const res = await fetch(
+            `${baseUrl}/api/projects/${projectId}/files`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Cookie: `next-auth.session-token=${userId}`,
+              },
+              body: JSON.stringify({ path: filePath, content }),
+            },
+          );
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+            console.warn("[Tool] writeProjectFile failed:", res.status, errorData);
+            return { error: errorData.error || `Errore ${res.status} nel salvare il file` };
+          }
+          console.log(`[Tool] writeProjectFile: file scritto con successo: ${filePath}`);
+          return { success: true, path: filePath, message: `File ${filePath} salvato con successo` };
+        } catch (error: any) {
+          console.error("[Tool] writeProjectFile error:", error.message);
+          return { error: error.message };
+        }
+      }) as any,
+    } as any);
+
+    toolsRecord.editProjectFile = tool({
+      description: "MODIFICA un file esistente nel progetto corrente. Richiedi prima di leggere il file con readProjectFile, poi applica le modifiche. USA SOLO per il progetto attuale!",
+      parameters: z.object({
+        path: z.string().describe("Percorso del file da modificare"),
+        content: z.string().describe("NUOVO contenuto completo del file (sostituisce tutto il contenuto precedente)"),
+      }),
+      execute: (async ({ path: filePath, content }: { path: string; content: string }) => {
+        console.log(`[Tool] editProjectFile called: path=${filePath}, projectId=${projectId}`);
+        try {
+          const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+          // First verify file exists (read check)
+          const readRes = await fetch(
+            `${baseUrl}/api/projects/${projectId}/files?path=${encodeURIComponent(filePath)}`,
+            { headers: { Cookie: `next-auth.session-token=${userId}` } },
+          );
+          if (!readRes.ok) {
+            return { error: `File non trovato: ${filePath}. Usa writeProjectFile per creare un nuovo file.` };
+          }
+          // Write the updated content
+          const writeRes = await fetch(
+            `${baseUrl}/api/projects/${projectId}/files`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Cookie: `next-auth.session-token=${userId}`,
+              },
+              body: JSON.stringify({ path: filePath, content }),
+            },
+          );
+          if (!writeRes.ok) {
+            const errorData = await writeRes.json().catch(() => ({ error: "Unknown error" }));
+            return { error: errorData.error || `Errore ${writeRes.status} nel modificare il file` };
+          }
+          console.log(`[Tool] editProjectFile: file modificato con successo: ${filePath}`);
+          return { success: true, path: filePath, message: `File ${filePath} modificato con successo` };
+        } catch (error: any) {
+          console.error("[Tool] editProjectFile error:", error.message);
+          return { error: error.message };
+        }
+      }) as any,
+    } as any);
+
+    toolsRecord.deleteProjectFile = tool({
+      description: "ELIMINA un file nel progetto corrente. Richiedi conferma all'utente per file importanti. USA SOLO per il progetto attuale - NON puoi eliminare file di altri progetti!",
+      parameters: z.object({
+        path: z.string().describe("Percorso del file da eliminare"),
+      }),
+      execute: (async ({ path: filePath }: { path: string }) => {
+        console.log(`[Tool] deleteProjectFile called: path=${filePath}, projectId=${projectId}`);
+        try {
+          const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+          const res = await fetch(
+            `${baseUrl}/api/projects/${projectId}/files?path=${encodeURIComponent(filePath)}`,
+            {
+              method: "DELETE",
+              headers: { Cookie: `next-auth.session-token=${userId}` },
+            },
+          );
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+            console.warn("[Tool] deleteProjectFile failed:", res.status, errorData);
+            return { error: errorData.error || `Errore ${res.status} nell'eliminare il file` };
+          }
+          console.log(`[Tool] deleteProjectFile: file eliminato con successo: ${filePath}`);
+          return { success: true, path: filePath, message: `File ${filePath} eliminato con successo` };
+        } catch (error: any) {
+          console.error("[Tool] deleteProjectFile error:", error.message);
+          return { error: error.message };
+        }
+      }) as any,
+    } as any);
+
+    // SECURITY: Explicit block for cross-project operations
+    toolsRecord._securityNotice = tool({
+      description: "AVVISO DI SICUREZZA: Spiegazione che non puoi operare su altri progetti",
+      parameters: z.object({
+        attemptedProjectId: z.string().describe("ID del progetto a cui l'utente ha tentato di accedere"),
+      }),
+      execute: (async ({ attemptedProjectId }: { attemptedProjectId: string }) => {
+        return {
+          error: "OPERAZIONE BLOCCATA",
+          message: `Non puoi accedere al progetto ${attemptedProjectId}. Sei attualmente nel progetto ${projectId} e puoi operare SOLO su questo progetto. Per lavorare su un altro progetto, esci da questo e entra nel progetto desiderato dalla dashboard.`,
+          currentProjectId: projectId,
+          attemptedProjectId,
+        };
+      }) as any,
+    } as any);
   }
 
   return toolsRecord;
@@ -912,6 +1067,165 @@ export async function POST(req: Request) {
       allMessages_WithFallback.push({
         role: "system" as const,
         content: `[TOOL_RESULT] Errore nel leggere i progetti: ${error.message}`,
+      });
+    }
+  }
+
+  // PATTERN 4: Rilevamento "archivia progetto" - esegue archiveProject
+  // Patterns: "archivia", "archivio", "sposta in archivio" + "progetto"
+  if (
+    !projectId && // Dashboard mode only
+    hasKeywords(lastUserContent, ["archivia", "archivio", "sposta in archivio", "metti in archivio"]) &&
+    hasKeywords(lastUserContent, ["progetto"])
+  ) {
+    console.log("[FALLBACK] Rilevato richiesta ARCHIVIA PROGETTO");
+    console.log(`[FALLBACK] Contenuto: "${lastUserContent.substring(0, 100)}"`);
+
+    try {
+      // Estrai il nome del progetto dal messaggio
+      const projectMatch = lastUserContent.match(/(?:progetto|project)\s+["']?([^"']+)["']?/i) ||
+                          lastUserContent.match(/(?:archivia|archivio)\s+["']?([^"']+)["']?/i);
+      const projectNameHint = projectMatch ? projectMatch[1].trim() : null;
+
+      console.log("[FALLBACK] Cerco progetto da archiviare...");
+      const { prisma } = await import("../../../../prisma/config");
+
+      // Trova tutti i progetti non archiviati
+      const projects = await prisma.project.findMany({
+        where: { userId, isArchived: false },
+        select: { id: true, name: true, path: true },
+      });
+
+      if (projects.length === 0) {
+        allMessages_WithFallback.push({
+          role: "system",
+          content: "[TOOL_RESULT] Non ci sono progetti da archiviare. L'utente non ha progetti attivi.",
+        });
+      } else {
+        // Cerca il progetto che corrisponde meglio al nome
+        let targetProject = null;
+        if (projectNameHint) {
+          targetProject = projects.find(p =>
+            p.name.toLowerCase().includes(projectNameHint.toLowerCase()) ||
+            projectNameHint.toLowerCase().includes(p.name.toLowerCase())
+          );
+        }
+        // Se non trovato per nome, prendi il primo
+        if (!targetProject) {
+          targetProject = projects[0];
+        }
+
+        console.log(`[FALLBACK] Archivio progetto: ${targetProject.name} (${targetProject.id})`);
+
+        // Esegui archiviazione
+        const fs = await import("fs/promises");
+        const path = await import("path");
+
+        const archivedDir = path.join(process.cwd(), "data", "projects", userId, "_archived");
+        await fs.mkdir(archivedDir, { recursive: true });
+
+        const oldPath = path.join(process.cwd(), "data", "projects", userId, targetProject.path);
+        const projectName = path.basename(targetProject.path);
+        const newPath = path.join(archivedDir, projectName);
+
+        await fs.rename(oldPath, newPath);
+
+        await prisma.project.update({
+          where: { id: targetProject.id },
+          data: { path: `_archived/${projectName}`, isArchived: true },
+        });
+
+        const successMessage = `[TOOL_RESULT] archiveProject eseguito manualmente: Progetto "${targetProject.name}" archiviato con successo!`;
+        console.log("[FALLBACK] Risultato:", successMessage);
+
+        allMessages_WithFallback.push({
+          role: "system",
+          content: successMessage,
+        });
+      }
+    } catch (error: any) {
+      console.error("[FALLBACK] Errore nell'archiviazione:", error.message);
+      allMessages_WithFallback.push({
+        role: "system",
+        content: `[TOOL_RESULT] Errore nell'archiviare il progetto: ${error.message}`,
+      });
+    }
+  }
+
+  // PATTERN 5: Rilevamento "ripristina progetto" - esegue unarchiveProject
+  // Patterns: "ripristina", "recupera", "torna live", "attiva", "riattiva", "archiviato" + "progetto"
+  if (
+    !projectId && // Dashboard mode only
+    hasKeywords(lastUserContent, ["ripristina", "recupera", "torna live", "attiva", "riattiva", "attivo", "archiviato"]) &&
+    hasKeywords(lastUserContent, ["progetto"])
+  ) {
+    console.log("[FALLBACK] Rilevato richiesta RIPRISTINA PROGETTO");
+    console.log(`[FALLBACK] Contenuto: "${lastUserContent.substring(0, 100)}"`);
+
+    try {
+      // Estrai il nome del progetto dal messaggio
+      const projectMatch = lastUserContent.match(/(?:progetto|project)\s+["']?([^"']+)["']?/i) ||
+                          lastUserContent.match(/(?:ripristina|recupera)\s+["']?([^"']+)["']?/i);
+      const projectNameHint = projectMatch ? projectMatch[1].trim() : null;
+
+      console.log("[FALLBACK] Cerco progetto archiviato da ripristinare...");
+      const { prisma } = await import("../../../../prisma/config");
+
+      // Trova tutti i progetti archiviati
+      const projects = await prisma.project.findMany({
+        where: { userId, isArchived: true },
+        select: { id: true, name: true, path: true },
+      });
+
+      if (projects.length === 0) {
+        allMessages_WithFallback.push({
+          role: "system",
+          content: "[TOOL_RESULT] Non ci sono progetti archiviati da ripristinare.",
+        });
+      } else {
+        // Cerca il progetto che corrisponde meglio al nome
+        let targetProject = null;
+        if (projectNameHint) {
+          targetProject = projects.find(p =>
+            p.name.toLowerCase().includes(projectNameHint.toLowerCase()) ||
+            projectNameHint.toLowerCase().includes(p.name.toLowerCase())
+          );
+        }
+        // Se non trovato per nome, prendi il primo
+        if (!targetProject) {
+          targetProject = projects[0];
+        }
+
+        console.log(`[FALLBACK] Ripristino progetto: ${targetProject.name} (${targetProject.id})`);
+
+        // Esegui ripristino
+        const fs = await import("fs/promises");
+        const path = await import("path");
+
+        const projectName = path.basename(targetProject.path);
+        const archivedPath = path.join(process.cwd(), "data", "projects", userId, "_archived", projectName);
+        const newPath = path.join(process.cwd(), "data", "projects", userId, projectName);
+
+        await fs.rename(archivedPath, newPath);
+
+        await prisma.project.update({
+          where: { id: targetProject.id },
+          data: { path: projectName, isArchived: false },
+        });
+
+        const successMessage = `[TOOL_RESULT] unarchiveProject eseguito manualmente: Progetto "${targetProject.name}" ripristinato con successo ed è ora attivo!`;
+        console.log("[FALLBACK] Risultato:", successMessage);
+
+        allMessages_WithFallback.push({
+          role: "system",
+          content: successMessage,
+        });
+      }
+    } catch (error: any) {
+      console.error("[FALLBACK] Errore nel ripristino:", error.message);
+      allMessages_WithFallback.push({
+        role: "system",
+        content: `[TOOL_RESULT] Errore nel ripristinare il progetto: ${error.message}`,
       });
     }
   }
