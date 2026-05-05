@@ -29,6 +29,13 @@ Aiuti l'utente a scrivere romanzi fornendo suggerimenti creativi e costruttivi.
 4. Se non conosci l'informazione, chiedi all'utente oppure usa i tool disponibili
 5. MAI MAI MAI inventare descrizioni basate sul nome del progetto (es. "test5" non è un futuristico distopico, potrebbe essere qualsiasi cosa!)
 
+## GESTIONE PROGETTI ARCHIVIATI:
+- I progetti con isArchived=true sono ARCHIVIATI e NON devono essere considerati di default
+- Quando elenchi progetti, mostra SOLO quelli attivi (isArchived=false)
+- Se l'utente chiede ESPLICITAMENTE "mostra anche gli archiviati" o "includi archiviati", allora includili
+- Per archiviare un progetto: usa archiveProject(projectId)
+- Per creare un nuovo progetto: usa createProject(name, description)
+
 ## QUANDO L'UTENTE CHIEDE "DI COSA PARLANO I PROGETTI" O INFORMAZIONI GENERALI SUI PROGETTI:
 1. Chiama PRIMA listUserProjects per ottenere l'elenco dei progetti con i loro ID
 2. Poi per OGNI progetto trovato, chiama getProjectDetails con il projectId per leggere i file
@@ -98,7 +105,7 @@ function createChatTools(userId: string, projectId: string | null) {
 
   // List all user projects (available everywhere, especially dashboard)
   toolsRecord.listUserProjects = tool({
-    description: "Elenca tutti i progetti dell'utente",
+    description: "Elenca tutti i progetti dell'utente (attivi e archiviati). I progetti archiviati hanno isArchived=true",
     parameters: z.object({}),
     execute: (async () => {
       console.log("[Tool] listUserProjects called for userId:", userId);
@@ -110,6 +117,7 @@ function createChatTools(userId: string, projectId: string | null) {
             id: true,
             name: true,
             description: true,
+            path: true,
           },
           orderBy: { createdAt: "desc" },
         });
@@ -121,10 +129,13 @@ function createChatTools(userId: string, projectId: string | null) {
         return {
           success: true,
           count: projects.length,
+          activeCount: projects.filter((p: any) => !p.path?.includes("/_archived/")).length,
+          archivedCount: projects.filter((p: any) => p.path?.includes("/_archived/")).length,
           projects: projects.map((p: any) => ({
             id: p.id,
             name: p.name,
             description: p.description,
+            isArchived: p.path?.includes("/_archived/") || false,
           })),
         };
       } catch (error: any) {
@@ -216,6 +227,108 @@ function createChatTools(userId: string, projectId: string | null) {
         };
       } catch (error: any) {
         console.error("[Tool] getProjectDetails error:", error.message);
+        return { error: error.message };
+      }
+    }) as any,
+  } as any);
+
+  // Tool to create a new project (dashboard only)
+  toolsRecord.createProject = tool({
+    description: "Crea un nuovo progetto di romanzo. Disponibile solo nella dashboard.",
+    parameters: z.object({
+      name: z.string().describe("Nome del progetto (senza spazi, usa trattini)"),
+      description: z.string().optional().describe("Descrizione opzionale del progetto"),
+    }),
+    execute: (async ({ name, description }: { name: string; description?: string }) => {
+      console.log("[Tool] createProject called:", name);
+      try {
+        const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+        const res = await fetch(
+          `${baseUrl}/api/projects`,
+          {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json",
+              Cookie: `next-auth.session-token=${userId}` 
+            },
+            body: JSON.stringify({ name, description }),
+          },
+        );
+        if (!res.ok) {
+          const error = await res.json();
+          return { error: error.error || "Errore nella creazione del progetto" };
+        }
+        const data = await res.json();
+        return {
+          success: true,
+          project: {
+            id: data.id,
+            name: data.name,
+            description: data.description,
+          },
+          message: `Progetto "${name}" creato con successo!`,
+        };
+      } catch (error: any) {
+        console.error("[Tool] createProject error:", error.message);
+        return { error: error.message };
+      }
+    }) as any,
+  } as any);
+
+  // Tool to archive a project (dashboard only)
+  toolsRecord.archiveProject = tool({
+    description: "Archivia un progetto spostandolo nella cartella _archived. Disponibile solo nella dashboard.",
+    parameters: z.object({
+      projectId: z.string().describe("ID del progetto da archiviare"),
+    }),
+    execute: (async ({ projectId: targetProjectId }: { projectId: string }) => {
+      console.log("[Tool] archiveProject called for projectId:", targetProjectId);
+      try {
+        const { prisma } = await import("../../../../prisma/config");
+        
+        // Verify project belongs to user
+        const project = await prisma.project.findFirst({
+          where: { id: targetProjectId, userId },
+          select: { id: true, name: true, path: true },
+        });
+        
+        if (!project) {
+          return { error: "Progetto non trovato o accesso negato" };
+        }
+        
+        // Check if already archived
+        if (project.path?.includes("/_archived/")) {
+          return { error: "Il progetto è già archiviato" };
+        }
+        
+        const fs = await import("fs/promises");
+        const path = await import("path");
+        
+        // Create archived folder if not exists
+        const archivedDir = path.join(process.cwd(), "projects", userId, "_archived");
+        await fs.mkdir(archivedDir, { recursive: true });
+        
+        // Move project folder to _archived
+        const oldPath = project.path;
+        const projectName = path.basename(oldPath);
+        const newPath = path.join(archivedDir, projectName);
+        
+        await fs.rename(oldPath, newPath);
+        
+        // Update database
+        await prisma.project.update({
+          where: { id: targetProjectId },
+          data: { path: newPath },
+        });
+        
+        return {
+          success: true,
+          message: `Progetto "${project.name}" archiviato con successo!`,
+          projectId: targetProjectId,
+          archivedPath: newPath,
+        };
+      } catch (error: any) {
+        console.error("[Tool] archiveProject error:", error.message);
         return { error: error.message };
       }
     }) as any,
@@ -667,14 +780,14 @@ export async function POST(req: Request) {
         // Formatta il risultato per l'LLM
         const formattedResults = projectsWithContent.map(p => {
           const contentSummary = p.fileContents && p.fileContents.length > 0
-            ? `FILE LETTI (${p.fileContents.length}):\n${p.fileContents.map((fc: any) => 
+            ? `FILE LETTI (${p.fileContents.length}):\n${p.fileContents.map((fc: any) =>
                 `- ${fc.file}:\n${fc.content.substring(0, 500)}...`
               ).join('\n')}`
-            : p.error 
+            : 'error' in p && p.error
               ? `ERRORE: ${p.error}`
               : "NESSUN FILE DI TESTO TROVATO (solo outline vuoto o template)";
           
-          return `\n=== PROGETTO: ${p.name} ===\nID: ${p.id}\nDescrizione DB: ${p.description || "N/A"}\nFile totali: ${p.totalFiles || 0}\n${contentSummary}`;
+          return `\n=== PROGETTO: ${p.name} ===\nID: ${p.id}\nDescrizione DB: ${p.description || "N/A"}\nFile totali: ${'totalFiles' in p ? p.totalFiles || 0 : 0}\n${contentSummary}`;
         }).join("\n");
 
         const toolResultMessage = `[TOOL_RESULT] getProjectDetails eseguito manualmente per ${projects.length} progetti.\n${formattedResults}`;

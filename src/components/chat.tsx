@@ -439,47 +439,49 @@ export default function Chat({ projectId, selectedFile }: ChatProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Actions */}
-      <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
-        <p className="text-xs text-gray-500 mb-2">Azioni rapide:</p>
-        <div className="flex flex-wrap gap-2">
-          <QuickActionButton
-            icon="💬"
-            label="Genera dialogo"
-            prompt="Genera un dialogo tra i personaggi del progetto"
-            onClick={setInput}
-            disabled={isLoading}
-          />
-          <QuickActionButton
-            icon="🎬"
-            label="Descrivi scena"
-            prompt="Descrivi una scena ambientata nel progetto"
-            onClick={setInput}
-            disabled={isLoading}
-          />
-          <QuickActionButton
-            icon="👤"
-            label="Crea personaggio"
-            prompt="Crea un nuovo personaggio per il romanzo"
-            onClick={setInput}
-            disabled={isLoading}
-          />
-          <QuickActionButton
-            icon="📖"
-            label="Genera capitolo"
-            prompt="Genera un nuovo capitolo basato sull'outline"
-            onClick={setInput}
-            disabled={isLoading}
-          />
-          <QuickActionButton
-            icon="✍️"
-            label="Revisiona testo"
-            prompt="Revisiona e migliora il testo selezionato"
-            onClick={setInput}
-            disabled={isLoading}
-          />
+      {/* Quick Actions - only in project chat */}
+      {projectId && (
+        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
+          <p className="text-xs text-gray-500 mb-2">Azioni rapide:</p>
+          <div className="flex flex-wrap gap-2">
+            <QuickActionButton
+              icon="💬"
+              label="Genera dialogo"
+              prompt="Genera un dialogo tra i personaggi del progetto"
+              onClick={setInput}
+              disabled={isLoading}
+            />
+            <QuickActionButton
+              icon="🎬"
+              label="Descrivi scena"
+              prompt="Descrivi una scena ambientata nel progetto"
+              onClick={setInput}
+              disabled={isLoading}
+            />
+            <QuickActionButton
+              icon="👤"
+              label="Crea personaggio"
+              prompt="Crea un nuovo personaggio per il romanzo"
+              onClick={setInput}
+              disabled={isLoading}
+            />
+            <QuickActionButton
+              icon="📖"
+              label="Genera capitolo"
+              prompt="Genera un nuovo capitolo basato sull'outline"
+              onClick={setInput}
+              disabled={isLoading}
+            />
+            <QuickActionButton
+              icon="✍️"
+              label="Revisiona testo"
+              prompt="Revisiona e migliora il testo selezionato"
+              onClick={setInput}
+              disabled={isLoading}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Workflow Triggers */}
       {projectId && (

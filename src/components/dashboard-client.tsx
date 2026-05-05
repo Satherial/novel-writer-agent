@@ -12,6 +12,7 @@ interface Project {
   name: string
   description: string | null
   createdAt: Date
+  path?: string
 }
 
 interface DashboardClientProps {
@@ -26,7 +27,17 @@ export default function DashboardClient({ projects, userId: _userId }: Dashboard
   const [newProjectDesc, setNewProjectDesc] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [showArchived, setShowArchived] = useState(false)
   const router = useRouter()
+
+  // Filter projects based on archived status
+  const filteredProjects = projects.filter(project => {
+    const isArchived = project.path?.includes("/_archived/") || false
+    return showArchived || !isArchived
+  })
+
+  const archivedCount = projects.filter(p => p.path?.includes("/_archived/")).length
+  const activeCount = projects.length - archivedCount
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,9 +85,24 @@ export default function DashboardClient({ projects, userId: _userId }: Dashboard
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">
-              I tuoi progetti ({projects.length})
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900">
+                I tuoi progetti ({showArchived ? projects.length : activeCount} {showArchived && `(${activeCount} attivi, ${archivedCount} archiviati)`})
+              </h2>
+              {archivedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowArchived(!showArchived)}
+                  className={`text-xs px-2 py-1 rounded-full transition-colors ${
+                    showArchived
+                      ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {showArchived ? "Nascondi archiviati" : `Mostra ${archivedCount} archiviati`}
+                </button>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setShowModal(true)}
@@ -90,7 +116,7 @@ export default function DashboardClient({ projects, userId: _userId }: Dashboard
           </div>
 
           <div className="p-4 sm:p-6">
-            {projects.length === 0 ? (
+            {filteredProjects.length === 0 ? (
               <div className="text-center py-12 px-4">
                 <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,30 +134,56 @@ export default function DashboardClient({ projects, userId: _userId }: Dashboard
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {projects.map((project) => (
-                  <a
-                    key={project.id}
-                    href={`/projects/${project.id}`}
-                    className="group block p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 truncate">
-                          {project.name}
-                        </h3>
-                        {project.description && (
-                          <p className="mt-1 text-sm text-gray-500 line-clamp-2">{project.description}</p>
-                        )}
-                        <p className="mt-2 text-xs text-gray-400">
-                          Creato: {new Date(project.createdAt).toLocaleDateString("it-IT")}
-                        </p>
+                {filteredProjects.map((project) => {
+                  const isArchived = project.path?.includes("/_archived/") || false;
+                  return (
+                    <a
+                      key={project.id}
+                      href={`/projects/${project.id}`}
+                      className={`group block p-4 border rounded-lg hover:border-blue-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                        isArchived ? "bg-gray-50 border-gray-200" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className={`text-base font-semibold truncate ${
+                              isArchived 
+                                ? "text-gray-600 group-hover:text-gray-800" 
+                                : "text-gray-900 group-hover:text-blue-600"
+                            }`}>
+                              {project.name}
+                            </h3>
+                            {isArchived && (
+                              <span className="text-xs px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded">
+                                Archiviato
+                              </span>
+                            )}
+                          </div>
+                          {project.description && (
+                            <p className={`mt-1 text-sm line-clamp-2 ${
+                              isArchived ? "text-gray-400" : "text-gray-500"
+                            }`}>
+                              {project.description}
+                            </p>
+                          )}
+                          <p className={`mt-2 text-xs ${
+                            isArchived ? "text-gray-300" : "text-gray-400"
+                          }`}>
+                            Creato: {new Date(project.createdAt).toLocaleDateString("it-IT")}
+                          </p>
+                        </div>
+                        <svg className={`w-5 h-5 shrink-0 ${
+                          isArchived 
+                            ? "text-gray-300 group-hover:text-gray-400" 
+                            : "text-gray-300 group-hover:text-blue-400"
+                        }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
                       </div>
-                      <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </a>
-                ))}
+                    </a>
+                  );
+                })}
               </div>
             )}
           </div>
