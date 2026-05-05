@@ -27,6 +27,7 @@ model Project {
   name        String
   description String?
   path        String // relativo a data/projects/<userId>/
+  isArchived  Boolean       @default(false)
   createdAt   DateTime      @default(now())
 
   chatMessages ChatMessage[]

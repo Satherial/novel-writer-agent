@@ -18,7 +18,13 @@ export async function GET(request: Request) {
       orderBy: { createdAt: "desc" },
     })
 
-    return NextResponse.json({ projects })
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const projectsWithArchived = projects.map(({ userId, ...p }) => ({
+      ...p,
+      isArchived: p.isArchived || p.path?.includes("/_archived/") || false,
+    }))
+
+    return NextResponse.json({ projects: projectsWithArchived })
   } catch (error) {
     console.error("[API] Error listing projects:", error)
     return NextResponse.json({ error: "Failed to list projects" }, { status: 500 })

@@ -29,11 +29,13 @@ Aiuti l'utente a scrivere romanzi fornendo suggerimenti creativi e costruttivi.
 4. Se non conosci l'informazione, chiedi all'utente oppure usa i tool disponibili
 5. MAI MAI MAI inventare descrizioni basate sul nome del progetto (es. "test5" non è un futuristico distopico, potrebbe essere qualsiasi cosa!)
 
-## GESTIONE PROGETTI ARCHIVIATI:
+## GESTIONE PROGETTI:
 - I progetti con isArchived=true sono ARCHIVIATI e NON devono essere considerati di default
 - Quando elenchi progetti, mostra SOLO quelli attivi (isArchived=false)
 - Se l'utente chiede ESPLICITAMENTE "mostra anche gli archiviati" o "includi archiviati", allora includili
 - Per archiviare un progetto: usa archiveProject(projectId)
+- Per RIPRISTINARE un progetto archiviato: usa unarchiveProject(projectId)
+- Per ELIMINARE definitivamente un progetto: usa deleteProject(projectId) - ATTENZIONE: azione irreversibile!
 - Per creare un nuovo progetto: usa createProject(name, description)
 
 ## QUANDO L'UTENTE CHIEDE "DI COSA PARLANO I PROGETTI" O INFORMAZIONI GENERALI SUI PROGETTI:
@@ -118,6 +120,7 @@ function createChatTools(userId: string, projectId: string | null) {
             name: true,
             description: true,
             path: true,
+            isArchived: true,
           },
           orderBy: { createdAt: "desc" },
         });
@@ -129,13 +132,13 @@ function createChatTools(userId: string, projectId: string | null) {
         return {
           success: true,
           count: projects.length,
-          activeCount: projects.filter((p: any) => !p.path?.includes("/_archived/")).length,
-          archivedCount: projects.filter((p: any) => p.path?.includes("/_archived/")).length,
+          activeCount: projects.filter((p: any) => !p.isArchived).length,
+          archivedCount: projects.filter((p: any) => p.isArchived).length,
           projects: projects.map((p: any) => ({
             id: p.id,
             name: p.name,
             description: p.description,
-            isArchived: p.path?.includes("/_archived/") || false,
+            isArchived: p.isArchived,
           })),
         };
       } catch (error: any) {
@@ -285,40 +288,40 @@ function createChatTools(userId: string, projectId: string | null) {
       console.log("[Tool] archiveProject called for projectId:", targetProjectId);
       try {
         const { prisma } = await import("../../../../prisma/config");
-        
+
         // Verify project belongs to user
         const project = await prisma.project.findFirst({
           where: { id: targetProjectId, userId },
-          select: { id: true, name: true, path: true },
+          select: { id: true, name: true, path: true, isArchived: true },
         });
-        
+
         if (!project) {
           return { error: "Progetto non trovato o accesso negato" };
         }
-        
+
         // Check if already archived
-        if (project.path?.includes("/_archived/")) {
+        if (project.isArchived) {
           return { error: "Il progetto è già archiviato" };
         }
-        
+
         const fs = await import("fs/promises");
         const path = await import("path");
-        
+
         // Create archived folder if not exists
-        const archivedDir = path.join(process.cwd(), "projects", userId, "_archived");
+        const archivedDir = path.join(process.cwd(), "data", "projects", userId, "_archived");
         await fs.mkdir(archivedDir, { recursive: true });
-        
+
         // Move project folder to _archived
-        const oldPath = project.path;
-        const projectName = path.basename(oldPath);
+        const oldPath = path.join(process.cwd(), "data", "projects", userId, project.path);
+        const projectName = path.basename(project.path);
         const newPath = path.join(archivedDir, projectName);
-        
+
         await fs.rename(oldPath, newPath);
-        
+
         // Update database
         await prisma.project.update({
           where: { id: targetProjectId },
-          data: { path: newPath },
+          data: { path: `_archived/${projectName}`, isArchived: true },
         });
         
         return {
@@ -329,6 +332,105 @@ function createChatTools(userId: string, projectId: string | null) {
         };
       } catch (error: any) {
         console.error("[Tool] archiveProject error:", error.message);
+        return { error: error.message };
+      }
+    }) as any,
+  } as any);
+
+  // Tool to unarchive a project (dashboard only)
+  toolsRecord.unarchiveProject = tool({
+    description: "Ripristina un progetto archiviato, spostandolo dalla cartella _archived alla cartella principale. Disponibile solo nella dashboard.",
+    parameters: z.object({
+      projectId: z.string().describe("ID del progetto da ripristinare"),
+    }),
+    execute: (async ({ projectId: targetProjectId }: { projectId: string }) => {
+      console.log("[Tool] unarchiveProject called for projectId:", targetProjectId);
+      try {
+        const { prisma } = await import("../../../../prisma/config");
+
+        // Verify project belongs to user
+        const project = await prisma.project.findFirst({
+          where: { id: targetProjectId, userId },
+          select: { id: true, name: true, path: true, isArchived: true },
+        });
+
+        if (!project) {
+          return { error: "Progetto non trovato o accesso negato" };
+        }
+
+        // Check if not archived
+        if (!project.isArchived) {
+          return { error: "Il progetto non è archiviato" };
+        }
+
+        const fs = await import("fs/promises");
+        const path = await import("path");
+
+        // Move project folder from _archived to root
+        const projectName = path.basename(project.path);
+        const archivedPath = path.join(process.cwd(), "data", "projects", userId, "_archived", projectName);
+        const newPath = path.join(process.cwd(), "data", "projects", userId, projectName);
+
+        await fs.rename(archivedPath, newPath);
+
+        // Update database
+        await prisma.project.update({
+          where: { id: targetProjectId },
+          data: { path: projectName, isArchived: false },
+        });
+
+        return {
+          success: true,
+          message: `Progetto "${project.name}" ripristinato con successo!`,
+          projectId: targetProjectId,
+        };
+      } catch (error: any) {
+        console.error("[Tool] unarchiveProject error:", error.message);
+        return { error: error.message };
+      }
+    }) as any,
+  } as any);
+
+  // Tool to delete a project permanently (dashboard only)
+  toolsRecord.deleteProject = tool({
+    description: "Elimina definitivamente un progetto e tutti i suoi file. ATTENZIONE: azione irreversibile! Disponibile solo nella dashboard.",
+    parameters: z.object({
+      projectId: z.string().describe("ID del progetto da eliminare"),
+    }),
+    execute: (async ({ projectId: targetProjectId }: { projectId: string }) => {
+      console.log("[Tool] deleteProject called for projectId:", targetProjectId);
+      try {
+        const { prisma } = await import("../../../../prisma/config");
+
+        // Verify project belongs to user
+        const project = await prisma.project.findFirst({
+          where: { id: targetProjectId, userId },
+          select: { id: true, name: true, path: true },
+        });
+
+        if (!project) {
+          return { error: "Progetto non trovato o accesso negato" };
+        }
+
+        const fs = await import("fs/promises");
+        const path = await import("path");
+
+        // Delete project folder
+        const projectPath = path.join(process.cwd(), "data", "projects", userId, project.path);
+        await fs.rm(projectPath, { recursive: true, force: true });
+
+        // Delete from database (cascades to chatMessages and fileLocks)
+        await prisma.project.delete({
+          where: { id: targetProjectId },
+        });
+
+        return {
+          success: true,
+          message: `Progetto "${project.name}" eliminato definitivamente!`,
+          projectId: targetProjectId,
+        };
+      } catch (error: any) {
+        console.error("[Tool] deleteProject error:", error.message);
         return { error: error.message };
       }
     }) as any,

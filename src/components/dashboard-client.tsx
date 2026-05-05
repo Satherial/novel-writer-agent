@@ -13,6 +13,7 @@ interface Project {
   description: string | null
   createdAt: Date
   path?: string
+  isArchived?: boolean
 }
 
 interface DashboardClientProps {
@@ -28,16 +29,46 @@ export default function DashboardClient({ projects, userId: _userId }: Dashboard
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [showArchived, setShowArchived] = useState(false)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
   const router = useRouter()
 
   // Filter projects based on archived status
   const filteredProjects = projects.filter(project => {
-    const isArchived = project.path?.includes("/_archived/") || false
+    const isArchived = project.isArchived || project.path?.includes("/_archived/") || false
     return showArchived || !isArchived
   })
 
-  const archivedCount = projects.filter(p => p.path?.includes("/_archived/")).length
+  const archivedCount = projects.filter(p => p.isArchived || p.path?.includes("/_archived/")).length
   const activeCount = projects.length - archivedCount
+
+  const handleArchive = async (projectId: string, archive: boolean) => {
+    setActionLoading(projectId)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/archive`, {
+        method: archive ? "POST" : "DELETE",
+      })
+      if (!res.ok) throw new Error("Failed")
+      router.refresh()
+    } catch {
+      alert(archive ? "Errore nell'archiviazione" : "Errore nel ripristino")
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleDelete = async (projectId: string, projectName: string) => {
+    if (!confirm(`Eliminare definitivamente "${projectName}"? Questa azione non può essere annullata.`)) return
+    setActionLoading(projectId)
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, { method: "DELETE" })
+      if (!res.ok) throw new Error("Failed")
+      router.refresh()
+    } catch {
+      alert("Errore nell'eliminazione")
+    } finally {
+      setActionLoading(null)
+    }
+  }
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -135,21 +166,21 @@ export default function DashboardClient({ projects, userId: _userId }: Dashboard
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredProjects.map((project) => {
-                  const isArchived = project.path?.includes("/_archived/") || false;
+                  const isArchived = project.isArchived || project.path?.includes("/_archived/") || false;
+                  const isLoading = actionLoading === project.id;
                   return (
-                    <a
+                    <div
                       key={project.id}
-                      href={`/projects/${project.id}`}
-                      className={`group block p-4 border rounded-lg hover:border-blue-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                        isArchived ? "bg-gray-50 border-gray-200" : "bg-white border-gray-200"
+                      className={`group p-4 border rounded-lg transition-all ${
+                        isArchived ? "bg-gray-50 border-gray-200" : "bg-white border-gray-200 hover:border-blue-300 hover:shadow-md"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
+                        <a href={`/projects/${project.id}`} className="flex-1 min-w-0 block">
                           <div className="flex items-center gap-2">
                             <h3 className={`text-base font-semibold truncate ${
-                              isArchived 
-                                ? "text-gray-600 group-hover:text-gray-800" 
+                              isArchived
+                                ? "text-gray-600 group-hover:text-gray-800"
                                 : "text-gray-900 group-hover:text-blue-600"
                             }`}>
                               {project.name}
@@ -172,16 +203,38 @@ export default function DashboardClient({ projects, userId: _userId }: Dashboard
                           }`}>
                             Creato: {new Date(project.createdAt).toLocaleDateString("it-IT")}
                           </p>
+                        </a>
+                        <div className="flex flex-col gap-1 shrink-0">
+                          {isArchived ? (
+                            <button
+                              onClick={() => handleArchive(project.id, false)}
+                              disabled={isLoading}
+                              className="p-1.5 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200 disabled:opacity-50"
+                              title="Ripristina"
+                            >
+                              {isLoading ? "..." : "↩️"}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleArchive(project.id, true)}
+                              disabled={isLoading}
+                              className="p-1.5 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 disabled:opacity-50"
+                              title="Archivia"
+                            >
+                              {isLoading ? "..." : "📦"}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(project.id, project.name)}
+                            disabled={isLoading}
+                            className="p-1.5 text-xs bg-red-100 text-red-600 rounded hover:bg-red-200 disabled:opacity-50"
+                            title="Elimina"
+                          >
+                            {isLoading ? "..." : "🗑️"}
+                          </button>
                         </div>
-                        <svg className={`w-5 h-5 shrink-0 ${
-                          isArchived 
-                            ? "text-gray-300 group-hover:text-gray-400" 
-                            : "text-gray-300 group-hover:text-blue-400"
-                        }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
                       </div>
-                    </a>
+                    </div>
                   );
                 })}
               </div>
